@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useAuthStore } from "@/store/auth";
 
 // Eager load layout components
 import Layout from "@/components/Layout";
@@ -29,11 +30,17 @@ const queryClient = new QueryClient({
 
 const PageLoader = () => (
   <div className="flex items-center justify-center min-h-screen">
-    <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
+    <Loader2 className="animate-spin h-8 w-8 text-black" />
   </div>
 );
 
 export default function App() {
+  const initializeAuth = useAuthStore((state) => state.initialize);
+
+  useEffect(() => {
+    initializeAuth();
+  }, [initializeAuth]);
+
   return (
     <QueryClientProvider client={queryClient}>
       <Router>

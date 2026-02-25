@@ -36,27 +36,20 @@ export default function PublicMemory() {
     setIsUploading(true);
 
     try {
-        console.log("Starting guest upload...", file.name);
         const fileExt = file.name.split('.').pop();
         const fileName = `guest_uploads/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = fileName;
 
-        // 1. Upload to Storage (allowed by anon policy)
         const { error: uploadError } = await supabase.storage
             .from('memories')
-            .upload(filePath, file, {
-                cacheControl: '3600',
-                upsert: false
-            });
+            .upload(filePath, file);
         
         if (uploadError) throw uploadError;
 
-        // 2. Get Public URL
         const { data: { publicUrl } } = supabase.storage
             .from('memories')
             .getPublicUrl(filePath);
 
-        // 3. Link via RPC (validates token)
         const { error: rpcError } = await supabase.rpc('add_media_via_token', {
             p_token: token,
             p_file_url: publicUrl,
@@ -67,13 +60,12 @@ export default function PublicMemory() {
 
         if (rpcError) throw rpcError;
 
-        console.log("Guest upload complete!");
         await queryClient.invalidateQueries({ queryKey: ['shared_memory', token] });
         alert("Photo uploaded successfully!");
         
     } catch (error: any) {
         console.error("Guest upload failed:", error);
-        alert(`Upload failed: ${error.message || 'Unknown error'}`);
+        alert(`Upload failed: ${error.message}`);
     } finally {
         setIsUploading(false);
         e.target.value = '';
@@ -101,18 +93,18 @@ export default function PublicMemory() {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center h-screen bg-gray-50">
-        <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
+      <div className="flex justify-center items-center h-screen bg-white">
+        <Loader2 className="animate-spin h-8 w-8 text-black" />
       </div>
     );
   }
 
   if (error || !sharedData) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-gray-50 px-4">
+      <div className="flex flex-col items-center justify-center h-screen bg-white px-4">
         <div className="text-center">
             <Globe className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h1 className="text-xl font-semibold text-gray-900 mb-2">Memory Not Found</h1>
+            <h1 className="text-xl font-bold text-gray-900 mb-2">Memory Not Found</h1>
             <p className="text-gray-500 max-w-md">
                 This link might be expired or invalid.
             </p>
@@ -123,75 +115,70 @@ export default function PublicMemory() {
 
   const { memory, media, sections, tags, profile, can_upload } = sharedData;
 
-  // Derived state
   const activeSection = sections.find((s: any) => s.id === activeSectionId);
-  
-  // Filter media for current view
   const currentMedia = media.filter((m: any) => {
-    if (activeSectionId) {
-      return m.section_id === activeSectionId;
-    }
+    if (activeSectionId) return m.section_id === activeSectionId;
     return !m.section_id;
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8 relative">
+    <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8 relative font-sans">
       {/* Language Switcher for Guest */}
-      <div className="absolute top-4 right-4 z-50 flex gap-2 bg-white/80 backdrop-blur px-3 py-1.5 rounded-full shadow-sm border border-gray-200">
+      <div className="absolute top-4 right-4 z-50 flex gap-4 text-xs font-bold tracking-widest bg-white/80 backdrop-blur px-4 py-2 rounded-full border border-gray-100">
          <button 
            onClick={() => setLanguage('en')}
-           className={`text-xs font-bold transition-colors ${language === 'en' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+           className={`transition-colors hover:text-black ${language === 'en' ? 'text-black underline decoration-2 underline-offset-4' : 'text-gray-400'}`}
          >
            EN
          </button>
-         <span className="text-gray-300">|</span>
          <button 
            onClick={() => setLanguage('es')}
-           className={`text-xs font-bold transition-colors ${language === 'es' ? 'text-indigo-600' : 'text-gray-400 hover:text-gray-600'}`}
+           className={`transition-colors hover:text-black ${language === 'es' ? 'text-black underline decoration-2 underline-offset-4' : 'text-gray-400'}`}
          >
            ES
          </button>
       </div>
 
-      <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+      <div className="max-w-4xl mx-auto bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
         
         {/* Header / Banner */}
         {!activeSectionId && (
-            <div className="px-8 py-10 bg-gradient-to-b from-indigo-50/50 to-white border-b border-gray-100">
+            <div className="px-6 py-10 md:px-12 bg-white border-b border-gray-100">
                 <div className="flex flex-col items-center text-center">
                     {profile?.avatar_url && (
-                        <img src={profile.avatar_url} alt={profile.username} className="w-16 h-16 rounded-full border-4 border-white shadow-sm mb-4" />
+                        <img src={profile.avatar_url} alt={profile.username} className="w-16 h-16 rounded-full border-2 border-gray-100 mb-6" />
                     )}
-                    <div className="text-sm text-indigo-600 font-medium mb-2 uppercase tracking-wide">{t('shared_memory')}</div>
-                    <h1 className="text-4xl font-bold text-gray-900 mb-4">{memory.title}</h1>
+                    <div className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">{t('shared_memory')}</div>
+                    <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">{memory.title}</h1>
                     
                     <div className="flex flex-wrap justify-center gap-4 text-sm text-gray-500 mb-8">
-                        <div className="flex items-center bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
-                            <Calendar className="h-4 w-4 mr-2 text-indigo-400" />
+                        <div className="flex items-center">
+                            <Calendar className="h-4 w-4 mr-2 text-gray-400" />
                             {new Date(memory.created_at).toLocaleDateString(undefined, { dateStyle: 'long' })}
                         </div>
                         {memory.location && (
-                            <div className="flex items-center bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
-                                <MapPin className="h-4 w-4 mr-2 text-indigo-400" />
+                            <div className="flex items-center">
+                                <div className="w-1 h-1 bg-gray-300 rounded-full mx-3"></div>
+                                <MapPin className="h-4 w-4 mr-2 text-gray-400" />
                                 {memory.location}
                             </div>
                         )}
-                        <div className="flex items-center bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
+                        <div className="flex items-center">
+                            <div className="w-1 h-1 bg-gray-300 rounded-full mx-3"></div>
                             <span className="text-gray-400 mr-1">{t('by')}</span>
-                            <span className="font-medium text-gray-900">@{profile?.username || 'Unknown'}</span>
+                            <span className="font-bold text-gray-900">@{profile?.username || 'Unknown'}</span>
                         </div>
                     </div>
 
-                    <p className="text-lg text-gray-700 leading-relaxed max-w-2xl mx-auto">
+                    <p className="text-lg text-gray-600 leading-relaxed max-w-2xl mx-auto whitespace-pre-wrap">
                         {memory.content}
                     </p>
 
                     {tags && tags.length > 0 && (
-                        <div className="mt-6 flex flex-wrap justify-center gap-2">
+                        <div className="mt-8 flex flex-wrap justify-center gap-2">
                             {tags.map((tagObj: any, index: number) => (
-                                <span key={index} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">
-                                    <Tag className="h-3 w-3 mr-1" />
-                                    {tagObj.name}
+                                <span key={index} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
+                                    #{tagObj.name}
                                 </span>
                             ))}
                         </div>
@@ -202,24 +189,23 @@ export default function PublicMemory() {
 
         {/* Section Header */}
         {activeSectionId && activeSection && (
-          <div className="px-8 py-6 border-b border-gray-100 bg-indigo-50/30 flex items-center justify-between sticky top-0 z-10 backdrop-blur-sm">
+          <div className="px-6 py-6 border-b border-gray-100 bg-gray-50 flex items-center justify-between sticky top-0 z-10">
             <div className="flex items-center gap-4">
                <button 
                  onClick={() => setActiveSectionId(null)}
-                 className="p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors"
+                 className="p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-100 text-gray-900 transition-colors"
                >
                  <ArrowLeft className="h-5 w-5" />
                </button>
                <div>
                  <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                   <Folder className="h-5 w-5 text-indigo-500" />
                    {activeSection.title}
                  </h2>
                </div>
             </div>
             
             {can_upload && (
-               <label className={`cursor-pointer inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-full shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-all active:scale-95 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+               <label className={`cursor-pointer inline-flex items-center px-4 py-2 text-sm font-bold rounded-full text-white bg-black hover:bg-gray-800 transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                   {isUploading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
                   {isUploading ? t('uploading') : t('add_photo')}
                   <input 
@@ -235,7 +221,7 @@ export default function PublicMemory() {
         )}
 
         {/* Content Grid */}
-        <div className="p-8 bg-gray-50/50 min-h-[400px]">
+        <div className="p-6 md:p-10 bg-white min-h-[400px]">
             
             {/* Root View */}
             {!activeSectionId && (
@@ -243,27 +229,26 @@ export default function PublicMemory() {
                     {/* Albums */}
                     {sections.length > 0 && (
                         <div>
-                            <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                                <Folder className="h-5 w-5 text-indigo-500" />
+                            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
                                 {t('albums')}
                             </h3>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
                                 {sections.map((section: any) => (
                                     <button
                                         key={section.id}
                                         onClick={() => setActiveSectionId(section.id)}
-                                        className="group flex flex-col items-center text-center p-4 bg-white rounded-xl border border-gray-200 hover:border-indigo-300 hover:shadow-lg transition-all cursor-pointer"
+                                        className="group flex flex-col text-left cursor-pointer"
                                     >
-                                        <div className="w-full aspect-[4/3] bg-indigo-50 rounded-lg mb-3 flex items-center justify-center group-hover:bg-indigo-100 transition-colors relative overflow-hidden">
+                                        <div className="w-full aspect-[4/3] bg-gray-100 rounded-2xl mb-3 flex items-center justify-center group-hover:bg-gray-200 transition-colors relative overflow-hidden border border-gray-100">
                                             {(() => {
                                                 const previewImage = media.find((m: any) => m.section_id === section.id);
                                                 if (previewImage) {
-                                                    return <img src={previewImage.file_url} className="w-full h-full object-cover absolute inset-0 opacity-90 group-hover:opacity-100 transition-opacity" />;
+                                                    return <img src={previewImage.file_url} className="w-full h-full object-cover absolute inset-0 transition-transform duration-500 group-hover:scale-105" />;
                                                 }
-                                                return <Folder className="h-10 w-10 text-indigo-300" fill="currentColor" fillOpacity={0.2} />;
+                                                return <Folder className="h-8 w-8 text-gray-300" />;
                                             })()}
                                         </div>
-                                        <span className="font-medium text-gray-900 truncate w-full group-hover:text-indigo-700">{section.title}</span>
+                                        <span className="font-bold text-gray-900 truncate w-full group-hover:text-gray-600 transition-colors">{section.title}</span>
                                         <span className="text-xs text-gray-500">
                                             {media.filter((m: any) => m.section_id === section.id).length} photos
                                         </span>
@@ -275,13 +260,12 @@ export default function PublicMemory() {
 
                     {/* Loose Photos */}
                     <div>
-                        <div className="flex items-center justify-between mb-4">
-                            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                                <ImageIcon className="h-5 w-5 text-gray-500" />
+                        <div className="flex items-center justify-between mb-6">
+                            <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                                 {t('unsorted_photos')}
                             </h3>
                             {can_upload && (
-                                <label className={`cursor-pointer text-sm font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                     {isUploading ? <Loader2 className="animate-spin h-4 w-4" /> : <Upload className="h-4 w-4" />}
                                     {isUploading ? t('uploading') : t('add_photo')}
                                     <input 
@@ -300,10 +284,10 @@ export default function PublicMemory() {
                                 {currentMedia.map((m: any) => (
                                     <div 
                                       key={m.id} 
-                                      className="aspect-square rounded-xl overflow-hidden bg-gray-200 relative group shadow-sm hover:shadow-lg transition-all cursor-pointer" 
+                                      className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer" 
                                       onClick={() => setSelectedMedia(m)}
                                     >
-                                        <img src={m.file_url} alt="" className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500" />
+                                        <img src={m.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                     </div>
                                 ))}
@@ -325,20 +309,20 @@ export default function PublicMemory() {
                                 {currentMedia.map((m: any) => (
                                     <div 
                                       key={m.id} 
-                                      className="aspect-square rounded-xl overflow-hidden bg-gray-200 relative group shadow-sm hover:shadow-lg transition-all cursor-pointer" 
+                                      className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer" 
                                       onClick={() => setSelectedMedia(m)}
                                     >
-                                        <img src={m.file_url} alt="" className="w-full h-full object-cover transform group-hover:scale-105 transition-transform duration-500" />
+                                        <img src={m.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                                     </div>
                                 ))}
                             </div>
                     ) : (
                         <div className="text-center py-20">
                             <ImageIcon className="h-12 w-12 text-gray-200 mx-auto mb-4" />
-                            <p className="text-gray-500">{t('empty_album')}</p>
-                            <p className="text-gray-400 text-sm mb-4">{t('upload_photos_msg')}</p>
+                            <p className="text-gray-500 font-bold">{t('empty_album')}</p>
+                            <p className="text-gray-400 text-sm mb-6 mt-2">{t('upload_photos_msg')}</p>
                             {can_upload && (
-                                <label className={`mt-4 cursor-pointer inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <label className={`mt-4 cursor-pointer inline-flex items-center px-6 py-3 text-sm font-bold rounded-full text-white bg-black hover:bg-gray-800 transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                     {isUploading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
                                     {isUploading ? t('uploading') : t('upload_first')}
                                     <input 
@@ -359,27 +343,27 @@ export default function PublicMemory() {
 
       {/* Lightbox Modal */}
       {selectedMedia && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4" onClick={() => setSelectedMedia(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-xl p-4" onClick={() => setSelectedMedia(null)}>
           <button 
-            className="absolute top-4 right-4 text-white hover:text-gray-300 p-2"
+            className="absolute top-4 right-4 text-gray-500 hover:text-black p-2 bg-gray-100 rounded-full"
             onClick={() => setSelectedMedia(null)}
           >
-            <X className="h-8 w-8" />
+            <X className="h-6 w-6" />
           </button>
           
-          <div className="relative max-w-5xl max-h-[90vh] w-full flex flex-col items-center" onClick={e => e.stopPropagation()}>
+          <div className="relative max-w-6xl w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
              <img 
                src={selectedMedia.file_url} 
                alt="Full view" 
-               className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" 
+               className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
              />
              
-             <div className="mt-4 flex gap-4">
+             <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
                 <button
                   onClick={() => handleDownload(selectedMedia.file_url, `memory-${token}-${selectedMedia.id}.jpg`)}
-                  className="flex items-center gap-2 bg-white text-gray-900 px-6 py-2.5 rounded-full font-medium hover:bg-gray-100 transition-colors shadow-lg"
+                  className="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-full font-bold hover:bg-gray-800 transition-all shadow-xl hover:scale-105"
                 >
-                  <Download className="h-5 w-5" />
+                  <Download className="h-4 w-4" />
                   {t('download')}
                 </button>
              </div>
