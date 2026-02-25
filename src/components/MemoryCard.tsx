@@ -70,7 +70,7 @@ export default function MemoryCard({ memory, onDelete, onShare, onFavorite, isFa
                 {memory.status === 'private' && <Lock className="w-3 h-3 text-gray-400" />}
                 {memory.status === 'public_link' && <Globe className="w-3 h-3 text-blue-400" />}
                 {memory.status === 'circle' && <Users className="w-3 h-3 text-purple-400" />}
-                <span className="uppercase tracking-wide">{t(memory.status)}</span>
+                <span className="uppercase tracking-wide">{t(memory.status as any)}</span>
              </div>
           </div>
         </div>
