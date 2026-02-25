@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, ArrowLeft, Calendar, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { useLanguageStore } from '@/store/language';
 
@@ -18,7 +18,7 @@ export default function MemoryDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
 
-  // Edit Mode State
+  // Edit Mode State (Memory)
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
     title: '',
@@ -27,6 +27,10 @@ export default function MemoryDetail() {
     status: 'private',
     date: ''
   });
+
+  // Edit Mode State (Section)
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editSectionTitle, setEditSectionTitle] = useState('');
 
   const { data: memory, isLoading, error } = useQuery({
     queryKey: ['memory', id],
@@ -50,7 +54,8 @@ export default function MemoryDetail() {
             id,
             file_url,
             file_type,
-            section_id
+            section_id,
+            storage_path
           ),
           memory_sections (
             id,
@@ -85,12 +90,7 @@ export default function MemoryDetail() {
     mutationFn: async (updatedData: any) => {
         if (!id) throw new Error("No ID");
         
-        // Prepare data for update
-        // If date is changed, we update created_at. 
-        // We try to preserve the time if possible, or just set to noon UTC to be safe?
-        // Let's just use the date string, Supabase/Postgres will treat 'YYYY-MM-DD' as midnight.
         const { date, ...rest } = updatedData;
-        
         const payload: any = { ...rest };
         if (date) {
             payload.created_at = date; 
@@ -124,8 +124,104 @@ export default function MemoryDetail() {
     },
   });
 
+  const renameSectionMutation = useMutation({
+    mutationFn: async ({ sectionId, title }: { sectionId: string, title: string }) => {
+      const { error } = await supabase
+        .from('memory_sections')
+        .update({ title })
+        .eq('id', sectionId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['memory', id] });
+      setEditingSectionId(null);
+      setEditSectionTitle('');
+    },
+  });
+
+  const deleteSectionMutation = useMutation({
+    mutationFn: async (sectionId: string) => {
+      // First, we need to handle the photos inside.
+      // Option 1: Move them to root (set section_id = null)
+      // Option 2: Delete them.
+      // Let's assume moving to root is safer for user data.
+      
+      const { error: moveError } = await supabase
+        .from('memory_media')
+        .update({ section_id: null })
+        .eq('section_id', sectionId);
+      
+      if (moveError) throw moveError;
+
+      const { error } = await supabase
+        .from('memory_sections')
+        .delete()
+        .eq('id', sectionId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['memory', id] });
+    },
+  });
+
+
+  const deleteMediaMutation = useMutation({
+    mutationFn: async (media: any) => {
+      // 1. Delete from Storage
+      if (media.storage_path) {
+        const { error: storageError } = await supabase.storage
+          .from('memories')
+          .remove([media.storage_path]);
+        
+        if (storageError) {
+          console.error('Storage delete error:', storageError);
+          // Continue to delete record even if storage fails? 
+          // Usually yes, to keep DB clean, but maybe warn.
+        }
+      }
+
+      // 2. Delete from DB
+      const { error } = await supabase
+        .from('memory_media')
+        .delete()
+        .eq('id', media.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['memory', id] });
+      setSelectedMedia(null); // Close lightbox
+    },
+  });
+
+
+  const handleDeleteMedia = async () => {
+    if (!selectedMedia) return;
+    if (confirm('Are you sure you want to delete this photo? This cannot be undone.')) {
+        try {
+            await deleteMediaMutation.mutateAsync(selectedMedia);
+        } catch (error) {
+            console.error('Failed to delete media:', error);
+            alert('Failed to delete photo');
+        }
+    }
+  };
+
   const handleSaveEdit = () => {
       updateMemoryMutation.mutate(editForm);
+  };
+
+  const handleRenameSection = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (editingSectionId && editSectionTitle.trim()) {
+          renameSectionMutation.mutate({ sectionId: editingSectionId, title: editSectionTitle.trim() });
+      }
+  };
+
+  const handleDeleteSection = (sectionId: string) => {
+      if (confirm('Are you sure you want to delete this album? Photos will be moved to "Unsorted".')) {
+          deleteSectionMutation.mutate(sectionId);
+      }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionId: string | null) => {
@@ -504,25 +600,70 @@ export default function MemoryDetail() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
                   {memory.memory_sections?.map((section: any) => (
-                    <button
-                      key={section.id}
-                      onClick={() => setActiveSectionId(section.id)}
-                      className="group flex flex-col text-left cursor-pointer"
-                    >
-                      <div className="w-full aspect-[4/3] bg-gray-100 rounded-2xl mb-3 flex items-center justify-center group-hover:bg-gray-200 transition-colors relative overflow-hidden border border-gray-100">
-                        {(() => {
-                          const previewImage = memory.memory_media?.find((m: any) => m.section_id === section.id);
-                          if (previewImage) {
-                            return <img src={previewImage.file_url} className="w-full h-full object-cover absolute inset-0 transition-transform duration-500 group-hover:scale-105" />;
-                          }
-                          return <Folder className="h-8 w-8 text-gray-300" />;
-                        })()}
-                      </div>
-                      <span className="font-bold text-gray-900 truncate w-full group-hover:text-gray-600 transition-colors">{section.title}</span>
-                      <span className="text-xs text-gray-500">
-                        {memory.memory_media?.filter((m: any) => m.section_id === section.id).length || 0} items
-                      </span>
-                    </button>
+                    editingSectionId === section.id ? (
+                        <form key={section.id} onSubmit={handleRenameSection} className="flex flex-col bg-gray-50 p-4 rounded-xl border border-black shadow-sm">
+                            <input 
+                                type="text" 
+                                value={editSectionTitle}
+                                onChange={e => setEditSectionTitle(e.target.value)}
+                                className="bg-transparent border-none p-0 text-sm font-bold text-gray-900 focus:ring-0 mb-2"
+                                autoFocus
+                            />
+                            <div className="flex gap-2 mt-auto">
+                                <button type="submit" className="text-xs bg-black text-white px-2 py-1 rounded">Save</button>
+                                <button type="button" onClick={() => setEditingSectionId(null)} className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">Cancel</button>
+                            </div>
+                        </form>
+                    ) : (
+                        <div
+                        key={section.id}
+                        className="group relative flex flex-col text-left cursor-pointer"
+                        >
+                        {/* Folder Click Area */}
+                        <div onClick={() => setActiveSectionId(section.id)}>
+                            <div className="w-full aspect-[4/3] bg-gray-100 rounded-2xl mb-3 flex items-center justify-center group-hover:bg-gray-200 transition-colors relative overflow-hidden border border-gray-100">
+                                {(() => {
+                                const previewImage = memory.memory_media?.find((m: any) => m.section_id === section.id);
+                                if (previewImage) {
+                                    return <img src={previewImage.file_url} className="w-full h-full object-cover absolute inset-0 transition-transform duration-500 group-hover:scale-105" />;
+                                }
+                                return <Folder className="h-8 w-8 text-gray-300" />;
+                                })()}
+                            </div>
+                            <span className="font-bold text-gray-900 truncate w-full group-hover:text-gray-600 transition-colors block">{section.title}</span>
+                            <span className="text-xs text-gray-500 block">
+                                {memory.memory_media?.filter((m: any) => m.section_id === section.id).length || 0} items
+                            </span>
+                        </div>
+
+                        {/* Edit/Delete Actions (Hover) */}
+                        {isOwner && (
+                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingSectionId(section.id);
+                                        setEditSectionTitle(section.title);
+                                    }}
+                                    className="p-1.5 bg-white rounded-full shadow-sm text-gray-500 hover:text-black hover:bg-gray-50 transition-colors"
+                                    title="Rename"
+                                >
+                                    <Pencil className="h-3 w-3" />
+                                </button>
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDeleteSection(section.id);
+                                    }}
+                                    className="p-1.5 bg-white rounded-full shadow-sm text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                    title="Delete"
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+                            </div>
+                        )}
+                        </div>
+                    )
                   ))}
                 </div>
               </div>
@@ -631,7 +772,7 @@ export default function MemoryDetail() {
                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
              />
              
-             <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
+             <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-4">
                 <button
                   onClick={() => handleDownload(selectedMedia.file_url, `memory-${id}-${selectedMedia.id}.jpg`)}
                   className="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-full font-bold hover:bg-gray-800 transition-all shadow-xl hover:scale-105"
@@ -639,6 +780,17 @@ export default function MemoryDetail() {
                   <Download className="h-4 w-4" />
                   {t('download')}
                 </button>
+
+                {isOwner && (
+                    <button
+                        onClick={handleDeleteMedia}
+                        disabled={deleteMediaMutation.isPending}
+                        className="flex items-center gap-2 bg-white text-red-600 px-6 py-3 rounded-full font-bold hover:bg-red-50 transition-all shadow-xl hover:scale-105"
+                    >
+                        {deleteMediaMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                        {t('delete')}
+                    </button>
+                )}
              </div>
           </div>
         </div>
