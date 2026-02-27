@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Calendar, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send, LayoutGrid, List, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { useLanguageStore } from '@/store/language';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -16,6 +16,9 @@ export default function PublicMemory() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<{date: string, media: any[]} | null>(null);
 
   // Comments State
   const [commentForm, setCommentForm] = useState({ name: '', content: '' });
@@ -52,6 +55,104 @@ export default function PublicMemory() {
     },
     enabled: !!sharedData?.memory?.id
   });
+
+  const { memory, media = [], sections = [], tags = [], profile, can_upload } = sharedData || {};
+
+  const activeSection = sections.find((s: any) => s.id === activeSectionId);
+  const currentMedia = media.filter((m: any) => {
+    if (activeSectionId) return m.section_id === activeSectionId;
+    return !m.section_id;
+  });
+
+  const groupedMedia = React.useMemo(() => {
+    if (!currentMedia) return {};
+    const groups: { [key: string]: any[] } = {};
+    
+    // Sort by date descending
+    const sortedMedia = [...currentMedia].sort((a: any, b: any) => 
+      new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
+    sortedMedia.forEach((media: any) => {
+      const d = new Date(media.created_at);
+      const date = d.toLocaleDateString(undefined, {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+      // Store using local date string key for easier calendar matching (YYYY-MM-DD)
+      const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      if (!groups[dateKey]) groups[dateKey] = [];
+      groups[dateKey].push(media);
+    });
+    return groups;
+  }, [currentMedia]);
+
+  const changeMonth = (offset: number) => {
+    setCurrentMonth(prev => {
+      const newDate = new Date(prev);
+      newDate.setMonth(newDate.getMonth() + offset);
+      return newDate;
+    });
+  };
+
+  const renderCalendar = () => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    
+    const firstDay = new Date(year, month, 1);
+    const lastDay = new Date(year, month + 1, 0);
+    
+    const daysInMonth = lastDay.getDate();
+    const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
+    
+    const days = [];
+    
+    // Empty cells for previous month
+    for (let i = 0; i < startDayOfWeek; i++) {
+      days.push(<div key={`empty-${i}`} className="aspect-square bg-transparent"></div>);
+    }
+    
+    // Days of the month
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      const mediaForDay = groupedMedia[dateStr];
+      const hasMedia = mediaForDay && mediaForDay.length > 0;
+      
+      days.push(
+        <div 
+          key={d} 
+          onClick={() => hasMedia && setSelectedDay({ date: dateStr, media: mediaForDay })}
+          className={`aspect-square relative transition-all duration-300 group ${
+            hasMedia 
+              ? 'cursor-pointer hover:scale-110 hover:z-10 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-4 border-white ring-1 ring-black/5' 
+              : 'rounded-full hover:bg-gray-50 flex items-center justify-center'
+          }`}
+        >
+          {hasMedia ? (
+             <>
+               {mediaForDay[0].file_type === 'video' ? (
+                 <video src={mediaForDay[0].file_url} className="w-full h-full object-cover rounded-full" muted />
+               ) : (
+                 <img src={mediaForDay[0].file_url} className="w-full h-full object-cover rounded-full" />
+               )}
+               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors rounded-full">
+                  <span className="text-white font-black text-xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{d}</span>
+               </div>
+             </>
+          ) : (
+             <span className="text-gray-300 font-bold text-lg group-hover:text-gray-400 transition-colors">
+                {d}
+             </span>
+          )}
+        </div>
+      );
+    }
+    
+    return days;
+  };
 
   const handlePostComment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -213,14 +314,6 @@ export default function PublicMemory() {
     );
   }
 
-  const { memory, media, sections, tags, profile, can_upload } = sharedData;
-
-  const activeSection = sections.find((s: any) => s.id === activeSectionId);
-  const currentMedia = media.filter((m: any) => {
-    if (activeSectionId) return m.section_id === activeSectionId;
-    return !m.section_id;
-  });
-
   return (
     <div className="min-h-screen bg-white py-12 px-4 sm:px-6 lg:px-8 relative font-sans">
       {/* Language Switcher for Guest */}
@@ -366,14 +459,34 @@ export default function PublicMemory() {
                             </h3>
                             <div className="flex items-center gap-3">
                                 {currentMedia.length > 0 && (
-                                    <button
-                                    onClick={handleDownloadAll}
+                                    <>
+                                        <div className="flex bg-gray-100 rounded-lg p-1 mr-2 border border-gray-200">
+                                            <button
+                                                onClick={() => setViewMode('grid')}
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
+                                                title="Grid View"
+                                            >
+                                                <LayoutGrid className="h-4 w-4" />
+                                                <span className="text-xs hidden sm:inline">Grid</span>
+                                            </button>
+                                            <button
+                                                onClick={() => setViewMode('calendar')}
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
+                                                title="Calendar View"
+                                            >
+                                                <CalendarIcon className="h-4 w-4" />
+                                                <span className="text-xs hidden sm:inline">Calendar</span>
+                                            </button>
+                                        </div>
+                                        <button
+                                        onClick={handleDownloadAll}
                                     disabled={isDownloading}
                                     className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 disabled:opacity-50"
                                     >
                                     {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
                                     {isDownloading ? 'Zipping...' : 'Download All'}
                                     </button>
+                                    </>
                                 )}
                                 {can_upload && (
                                     <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
@@ -392,27 +505,55 @@ export default function PublicMemory() {
                         </div>
 
                         {currentMedia.length > 0 ? (
-                            <div className="columns-2 sm:columns-3 md:columns-4 gap-4 space-y-4 block">
-                                {currentMedia.map((m: any) => (
-                                    <div 
-                                      key={m.id} 
-                                      className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4" 
-                                      onClick={() => setSelectedMedia(m)}
-                                    >
-                                        {m.file_type === 'video' ? (
-                                          <div className="relative w-full h-auto">
-                                            <video src={m.file_url} className="w-full h-auto rounded-xl" muted playsInline />
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                                              <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                            viewMode === 'grid' ? (
+                                <div className="columns-2 sm:columns-3 md:columns-4 gap-4 space-y-4 block">
+                                    {currentMedia.map((m: any) => (
+                                        <div 
+                                        key={m.id} 
+                                        className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4" 
+                                        onClick={() => setSelectedMedia(m)}
+                                        >
+                                            {m.file_type === 'video' ? (
+                                            <div className="relative w-full h-auto">
+                                                <video src={m.file_url} className="w-full h-auto rounded-xl" muted playsInline />
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                                                <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                                                </div>
                                             </div>
-                                          </div>
-                                        ) : (
-                                          <img src={m.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
-                                        )}
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                                    </div>
-                                ))}
-                            </div>
+                                            ) : (
+                                            <img src={m.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                                            )}
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white border border-gray-100 rounded-[2rem] p-4 md:p-8 shadow-sm">
+                                   <div className="flex items-center justify-between mb-6 md:mb-10 px-2 md:px-4">
+                                       <button onClick={() => changeMonth(-1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
+                                           <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
+                                       </button>
+                                       <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tight capitalize text-center mx-2">
+                                           {currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                                       </h2>
+                                       <button onClick={() => changeMonth(1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
+                                           <ChevronRight className="h-5 w-5 md:h-6 md:w-6" />
+                                       </button>
+                                   </div>
+                                   
+                                   <div className="grid grid-cols-7 mb-4 md:mb-6 text-center">
+                                       {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                           <div key={day} className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest py-2">
+                                               {day}
+                                           </div>
+                                       ))}
+                                   </div>
+                                   
+                                   <div className="grid grid-cols-7 gap-1 sm:gap-4 lg:gap-6">
+                                       {renderCalendar()}
+                                   </div>
+                                </div>
+                            )
                         ) : (
                             <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-200">
                                 <p className="text-gray-400 italic">No loose photos shared.</p>
@@ -425,28 +566,77 @@ export default function PublicMemory() {
             {/* Folder View Content */}
             {activeSectionId && (
                 <div>
+                    <div className="flex items-center justify-end mb-6">
+                        <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+                            <button
+                                onClick={() => setViewMode('grid')}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
+                                title="Grid View"
+                            >
+                                <LayoutGrid className="h-4 w-4" />
+                                <span className="text-xs hidden sm:inline">Grid</span>
+                            </button>
+                            <button
+                                onClick={() => setViewMode('calendar')}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
+                                title="Calendar View"
+                            >
+                                <CalendarIcon className="h-4 w-4" />
+                                <span className="text-xs hidden sm:inline">Calendar</span>
+                            </button>
+                        </div>
+                    </div>
+
                     {currentMedia.length > 0 ? (
-                        <div className="columns-2 sm:columns-3 md:columns-4 gap-4 space-y-4 block">
-                                {currentMedia.map((m: any) => (
-                                    <div 
-                                      key={m.id} 
-                                      className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4" 
-                                      onClick={() => setSelectedMedia(m)}
-                                    >
-                                        {m.file_type === 'video' ? (
-                                          <div className="relative w-full h-auto">
-                                            <video src={m.file_url} className="w-full h-auto rounded-xl" muted playsInline />
-                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                                              <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                        viewMode === 'grid' ? (
+                            <div className="columns-2 sm:columns-3 md:columns-4 gap-4 space-y-4 block">
+                                    {currentMedia.map((m: any) => (
+                                        <div 
+                                        key={m.id} 
+                                        className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4" 
+                                        onClick={() => setSelectedMedia(m)}
+                                        >
+                                            {m.file_type === 'video' ? (
+                                            <div className="relative w-full h-auto">
+                                                <video src={m.file_url} className="w-full h-auto rounded-xl" muted playsInline />
+                                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                                                <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                                                </div>
                                             </div>
-                                          </div>
-                                        ) : (
-                                          <img src={m.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
-                                        )}
-                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                                    </div>
-                                ))}
-                            </div>
+                                            ) : (
+                                            <img src={m.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                                            )}
+                                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                                        </div>
+                                    ))}
+                                </div>
+                        ) : (
+                            <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white border border-gray-100 rounded-[2rem] p-4 md:p-8 shadow-sm">
+                                <div className="flex items-center justify-between mb-6 md:mb-10 px-2 md:px-4">
+                                    <button onClick={() => changeMonth(-1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
+                                        <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
+                                    </button>
+                                    <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tight capitalize text-center mx-2">
+                                        {currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
+                                    </h2>
+                                    <button onClick={() => changeMonth(1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
+                                        <ChevronRight className="h-5 w-5 md:h-6 md:w-6" />
+                                    </button>
+                                </div>
+                                
+                                <div className="grid grid-cols-7 mb-4 md:mb-6 text-center">
+                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                        <div key={day} className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest py-2">
+                                            {day}
+                                        </div>
+                                    ))}
+                                </div>
+                                
+                                <div className="grid grid-cols-7 gap-1 sm:gap-4 lg:gap-6">
+                                    {renderCalendar()}
+                                </div>
+                             </div>
+                        )
                     ) : (
                         <div className="text-center py-20">
                             <ImageIcon className="h-12 w-12 text-gray-200 mx-auto mb-4" />
@@ -471,6 +661,48 @@ export default function PublicMemory() {
             )}
         </div>
       </div>
+
+        {/* Day Detail Modal */}
+        {selectedDay && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-xl p-4" onClick={() => setSelectedDay(null)}>
+            <div className="relative max-w-5xl w-full h-[85vh] flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                    <h2 className="text-2xl font-bold text-gray-900">
+                        {new Date(selectedDay.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </h2>
+                    <button 
+                        className="text-gray-500 hover:text-black p-2 bg-gray-100 rounded-full"
+                        onClick={() => setSelectedDay(null)}
+                    >
+                        <X className="h-6 w-6" />
+                    </button>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto p-6">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        {selectedDay.media.map((media: any) => (
+                            <div 
+                                key={media.id} 
+                                className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer"
+                                onClick={() => setSelectedMedia(media)}
+                            >
+                                {media.file_type === 'video' ? (
+                                    <div className="relative w-full h-full">
+                                        <video src={media.file_url} className="w-full h-full object-cover" muted playsInline />
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                                            <Play className="h-8 w-8 text-white fill-white opacity-80" />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <img src={media.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+            </div>
+        )}
 
         {/* Floating Comments Button */}
         <div className="fixed bottom-6 right-6 z-40">
