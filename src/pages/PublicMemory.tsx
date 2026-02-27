@@ -22,6 +22,21 @@ export default function PublicMemory() {
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showComments, setShowComments] = useState(false);
 
+  const { data: sharedData, isLoading, error } = useQuery({
+    queryKey: ['shared_memory', token],
+    queryFn: async () => {
+      if (!token) throw new Error('Token is required');
+
+      const { data, error } = await supabase.rpc('get_shared_memory', { p_token: token });
+
+      if (error) throw error;
+      if (!data || data.error) throw new Error(data?.error || 'Memory not found');
+      
+      return data;
+    },
+    enabled: !!token,
+  });
+
   const { data: comments, refetch: refetchComments } = useQuery({
     queryKey: ['comments', token],
     queryFn: async () => {
@@ -64,21 +79,6 @@ export default function PublicMemory() {
         setIsSubmittingComment(false);
     }
   };
-
-  const { data: sharedData, isLoading, error } = useQuery({
-    queryKey: ['shared_memory', token],
-    queryFn: async () => {
-      if (!token) throw new Error('Token is required');
-
-      const { data, error } = await supabase.rpc('get_shared_memory', { p_token: token });
-
-      if (error) throw error;
-      if (!data || data.error) throw new Error(data?.error || 'Memory not found');
-      
-      return data;
-    },
-    enabled: !!token,
-  });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionId: string | null) => {
     if (!e.target.files || !e.target.files[0]) return;

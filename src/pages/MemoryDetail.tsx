@@ -21,6 +21,8 @@ export default function MemoryDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
+  const [isPlayingSlideshow, setIsPlayingSlideshow] = useState(false);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
 
   // Edit Mode State (Memory)
   const [isEditing, setIsEditing] = useState(false);
@@ -76,6 +78,35 @@ export default function MemoryDetail() {
     },
     enabled: !!id,
   });
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    const currentMedia = memory?.memory_media?.filter((m: any) => {
+        if (activeSectionId) return m.section_id === activeSectionId;
+        return !m.section_id;
+    });
+
+    if (isPlayingSlideshow && currentMedia && currentMedia.length > 0) {
+        // Open lightbox with first image if not open
+        if (!selectedMedia) {
+            setSelectedMedia(currentMedia[0]);
+            setCurrentSlideIndex(0);
+        }
+
+        interval = setInterval(() => {
+            setCurrentSlideIndex((prev) => {
+                const nextIndex = (prev + 1) % currentMedia.length;
+                setSelectedMedia(currentMedia[nextIndex]);
+                return nextIndex;
+            });
+        }, 3000); // 3 seconds per slide
+    }
+    return () => clearInterval(interval);
+  }, [isPlayingSlideshow, memory, activeSectionId, selectedMedia]);
+
+  const handleStopSlideshow = () => {
+    setIsPlayingSlideshow(false);
+  };
 
   // Populate edit form when memory data loads
   useEffect(() => {
@@ -728,14 +759,23 @@ export default function MemoryDetail() {
                   </h3>
                   <div className="flex items-center gap-3">
                     {currentMedia && currentMedia.length > 0 && (
-                        <button
-                        onClick={handleDownloadAll}
-                        disabled={isDownloading}
-                        className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 disabled:opacity-50"
-                        >
-                        {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                        {isDownloading ? 'Zipping...' : 'Download All'}
-                        </button>
+                        <>
+                            <button
+                                onClick={() => setIsPlayingSlideshow(!isPlayingSlideshow)}
+                                className={`text-sm font-bold flex items-center gap-1 ${isPlayingSlideshow ? 'text-green-600' : 'text-black hover:text-gray-600'}`}
+                            >
+                                <Play className="h-4 w-4" />
+                                {isPlayingSlideshow ? 'Playing...' : 'Slideshow'}
+                            </button>
+                            <button
+                                onClick={handleDownloadAll}
+                                disabled={isDownloading}
+                                className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 disabled:opacity-50"
+                            >
+                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                {isDownloading ? 'Zipping...' : 'Download All'}
+                            </button>
+                        </>
                     )}
                     {isOwner && (
                      <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
