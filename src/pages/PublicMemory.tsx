@@ -2,8 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Calendar, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download } from 'lucide-react';
+import { Loader2, Calendar, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send } from 'lucide-react';
 import { useLanguageStore } from '@/store/language';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import { compressImage } from '@/lib/utils';
 
 export default function PublicMemory() {
   const { token } = useParams<{ token: string }>();
@@ -11,7 +14,56 @@ export default function PublicMemory() {
   const { t, language, setLanguage } = useLanguageStore();
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
+
+  // Comments State
+  const [commentForm, setCommentForm] = useState({ name: '', content: '' });
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+
+  const { data: comments, refetch: refetchComments } = useQuery({
+    queryKey: ['comments', token],
+    queryFn: async () => {
+        if (!sharedData?.memory?.id) return [];
+        const { data, error } = await supabase
+            .from('memory_comments')
+            .select('*')
+            .eq('memory_id', sharedData.memory.id)
+            .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        return data;
+    },
+    enabled: !!sharedData?.memory?.id
+  });
+
+  const handlePostComment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!commentForm.name.trim() || !commentForm.content.trim() || !sharedData?.memory?.id) return;
+    
+    setIsSubmittingComment(true);
+    try {
+        const { error } = await supabase
+            .from('memory_comments')
+            .insert([{
+                memory_id: sharedData.memory.id,
+                author_name: commentForm.name.trim(),
+                content: commentForm.content.trim()
+            }]);
+        
+        if (error) throw error;
+        
+        setCommentForm({ name: '', content: '' });
+        refetchComments();
+        alert('Comment posted!');
+    } catch (error) {
+        console.error("Error posting comment:", error);
+        alert("Failed to post comment.");
+    } finally {
+        setIsSubmittingComment(false);
+    }
+  };
 
   const { data: sharedData, isLoading, error } = useQuery({
     queryKey: ['shared_memory', token],
@@ -36,13 +88,26 @@ export default function PublicMemory() {
     setIsUploading(true);
 
     try {
-        const fileExt = file.name.split('.').pop();
+        let uploadFile = file;
+        const fileExt = file.name.split('.').pop()?.toLowerCase();
+        const isVideo = ['mp4', 'mov', 'webm'].includes(fileExt || '');
+        const fileType = isVideo ? 'video' : 'image';
+
+        // Compress if it's an image
+        if (fileType === 'image') {
+            try {
+                uploadFile = await compressImage(file);
+            } catch (err) {
+                console.warn("Compression failed, using original file", err);
+            }
+        }
+
         const fileName = `guest_uploads/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = fileName;
 
         const { error: uploadError } = await supabase.storage
             .from('memories')
-            .upload(filePath, file);
+            .upload(filePath, uploadFile);
         
         if (uploadError) throw uploadError;
 
@@ -53,7 +118,7 @@ export default function PublicMemory() {
         const { error: rpcError } = await supabase.rpc('add_media_via_token', {
             p_token: token,
             p_file_url: publicUrl,
-            p_file_type: 'image',
+            p_file_type: fileType,
             p_storage_path: filePath,
             p_section_id: sectionId
         });
@@ -69,6 +134,41 @@ export default function PublicMemory() {
     } finally {
         setIsUploading(false);
         e.target.value = '';
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!currentMedia || currentMedia.length === 0) return;
+    
+    setIsDownloading(true);
+    try {
+      const zip = new JSZip();
+      const folderName = activeSection ? activeSection.title : memory.title;
+      const folder = zip.folder(folderName);
+      
+      if (!folder) throw new Error("Failed to create zip folder");
+
+      const downloadPromises = currentMedia.map(async (media: any, index: number) => {
+        try {
+          const response = await fetch(media.file_url);
+          const blob = await response.blob();
+          const filename = `photo-${index + 1}.jpg`;
+          folder.file(filename, blob);
+        } catch (err) {
+          console.error(`Failed to download ${media.file_url}`, err);
+        }
+      });
+
+      await Promise.all(downloadPromises);
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, `${folderName}.zip`);
+      
+    } catch (error) {
+      console.error("Error creating zip:", error);
+      alert("Failed to download all photos.");
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -211,10 +311,10 @@ export default function PublicMemory() {
                   <input 
                     type="file" 
                     className="hidden" 
-                    accept="image/*" 
+                    accept="image/*,video/*" 
                     onChange={(e) => handleFileUpload(e, activeSectionId)} 
                     disabled={isUploading}
-                  />
+                    />
                </label>
             )}
           </div>
@@ -264,30 +364,51 @@ export default function PublicMemory() {
                             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                                 {t('unsorted_photos')}
                             </h3>
-                            {can_upload && (
-                                <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                    {isUploading ? <Loader2 className="animate-spin h-4 w-4" /> : <Upload className="h-4 w-4" />}
-                                    {isUploading ? t('uploading') : t('add_photo')}
-                                    <input 
-                                        type="file" 
-                                        className="hidden" 
-                                        accept="image/*" 
-                                        onChange={(e) => handleFileUpload(e, null)} 
-                                        disabled={isUploading}
-                                    />
-                                </label>
-                            )}
+                            <div className="flex items-center gap-3">
+                                {currentMedia.length > 0 && (
+                                    <button
+                                    onClick={handleDownloadAll}
+                                    disabled={isDownloading}
+                                    className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 disabled:opacity-50"
+                                    >
+                                    {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                                    {isDownloading ? 'Zipping...' : 'Download All'}
+                                    </button>
+                                )}
+                                {can_upload && (
+                                    <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                        {isUploading ? <Loader2 className="animate-spin h-4 w-4" /> : <Upload className="h-4 w-4" />}
+                                        {isUploading ? t('uploading') : t('add_photo')}
+                                        <input 
+                                            type="file" 
+                                            className="hidden" 
+                                            accept="image/*" 
+                                            onChange={(e) => handleFileUpload(e, null)} 
+                                            disabled={isUploading}
+                                        />
+                                    </label>
+                                )}
+                            </div>
                         </div>
 
                         {currentMedia.length > 0 ? (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                            <div className="columns-2 sm:columns-3 md:columns-4 gap-4 space-y-4 block">
                                 {currentMedia.map((m: any) => (
                                     <div 
                                       key={m.id} 
-                                      className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer" 
+                                      className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4" 
                                       onClick={() => setSelectedMedia(m)}
                                     >
-                                        <img src={m.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        {m.file_type === 'video' ? (
+                                          <div className="relative w-full h-auto">
+                                            <video src={m.file_url} className="w-full h-auto rounded-xl" muted playsInline />
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                                              <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <img src={m.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        )}
                                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                     </div>
                                 ))}
@@ -305,14 +426,24 @@ export default function PublicMemory() {
             {activeSectionId && (
                 <div>
                     {currentMedia.length > 0 ? (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                        <div className="columns-2 sm:columns-3 md:columns-4 gap-4 space-y-4 block">
                                 {currentMedia.map((m: any) => (
                                     <div 
                                       key={m.id} 
-                                      className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer" 
+                                      className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4" 
                                       onClick={() => setSelectedMedia(m)}
                                     >
-                                        <img src={m.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        {m.file_type === 'video' ? (
+                                          <div className="relative w-full h-auto">
+                                            <video src={m.file_url} className="w-full h-auto rounded-xl" muted playsInline />
+                                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                                              <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <img src={m.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                                        )}
+                                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                                     </div>
                                 ))}
                             </div>
@@ -341,6 +472,80 @@ export default function PublicMemory() {
         </div>
       </div>
 
+        {/* Floating Comments Button */}
+        <div className="fixed bottom-6 right-6 z-40">
+            <button 
+                onClick={() => setShowComments(!showComments)}
+                className="bg-black text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center gap-2"
+            >
+                <MessageSquare className="h-6 w-6" />
+                {comments && comments.length > 0 && (
+                    <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full absolute -top-1 -right-1">
+                        {comments.length}
+                    </span>
+                )}
+            </button>
+        </div>
+
+        {/* Comments Sidebar/Drawer */}
+        {showComments && (
+            <div className="fixed inset-y-0 right-0 w-full sm:w-96 bg-white shadow-2xl z-50 p-6 flex flex-col border-l border-gray-100 animate-in slide-in-from-right duration-300">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold">Guest Book</h2>
+                    <button onClick={() => setShowComments(false)} className="p-2 hover:bg-gray-100 rounded-full">
+                        <X className="h-6 w-6" />
+                    </button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto space-y-4 mb-6 pr-2">
+                    {comments?.length === 0 ? (
+                        <div className="text-center py-10 text-gray-400">
+                            <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
+                            <p>No comments yet. Be the first!</p>
+                        </div>
+                    ) : (
+                        comments?.map((comment: any) => (
+                            <div key={comment.id} className="bg-gray-50 p-4 rounded-xl">
+                                <div className="flex justify-between items-start mb-1">
+                                    <span className="font-bold text-sm">{comment.author_name}</span>
+                                    <span className="text-xs text-gray-400">{new Date(comment.created_at).toLocaleDateString()}</span>
+                                </div>
+                                <p className="text-gray-700 text-sm">{comment.content}</p>
+                            </div>
+                        ))
+                    )}
+                </div>
+
+                <form onSubmit={handlePostComment} className="mt-auto pt-4 border-t border-gray-100">
+                    <input 
+                        type="text" 
+                        placeholder={t('your_name')}
+                        className="w-full mb-3 px-4 py-2 bg-gray-50 rounded-lg border-transparent focus:bg-white focus:border-black focus:ring-0 transition-colors text-sm font-medium"
+                        value={commentForm.name}
+                        onChange={e => setCommentForm({...commentForm, name: e.target.value})}
+                        required
+                    />
+                    <div className="relative">
+                        <textarea 
+                            placeholder={t('leave_message')}
+                            className="w-full px-4 py-3 bg-gray-50 rounded-xl border-transparent focus:bg-white focus:border-black focus:ring-0 transition-colors text-sm resize-none pr-12"
+                            rows={3}
+                            value={commentForm.content}
+                            onChange={e => setCommentForm({...commentForm, content: e.target.value})}
+                            required
+                        />
+                        <button 
+                            type="submit" 
+                            disabled={isSubmittingComment}
+                            className="absolute bottom-3 right-3 p-2 bg-black text-white rounded-full hover:bg-gray-800 transition-colors disabled:opacity-50"
+                        >
+                            {isSubmittingComment ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                        </button>
+                    </div>
+                </form>
+            </div>
+        )}
+
       {/* Lightbox Modal */}
       {selectedMedia && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-xl p-4" onClick={() => setSelectedMedia(null)}>
@@ -352,11 +557,20 @@ export default function PublicMemory() {
           </button>
           
           <div className="relative max-w-6xl w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
-             <img 
-               src={selectedMedia.file_url} 
-               alt="Full view" 
-               className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
-             />
+             {selectedMedia.file_type === 'video' ? (
+               <video 
+                 src={selectedMedia.file_url} 
+                 controls 
+                 autoPlay 
+                 className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
+               />
+             ) : (
+               <img 
+                 src={selectedMedia.file_url} 
+                 alt="Full view" 
+                 className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
+               />
+             )}
              
              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2">
                 <button

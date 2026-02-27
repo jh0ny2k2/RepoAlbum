@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, ArrowLeft, Calendar, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil, Play } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { useLanguageStore } from '@/store/language';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import { compressImage } from '@/lib/utils';
 
 export default function MemoryDetail() {
   const { id } = useParams<{ id: string }>();
@@ -16,6 +19,7 @@ export default function MemoryDetail() {
   const [newSectionTitle, setNewSectionTitle] = useState('');
   const [isCreatingSection, setIsCreatingSection] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
 
   // Edit Mode State (Memory)
@@ -232,13 +236,26 @@ export default function MemoryDetail() {
     setIsUploading(true);
 
     try {
-        const fileExt = file.name.split('.').pop();
+        let uploadFile = file;
+        const fileExt = file.name.split('.').pop()?.toLowerCase();
+        const isVideo = ['mp4', 'mov', 'webm'].includes(fileExt || '');
+        const fileType = isVideo ? 'video' : 'image';
+
+        // Compress if it's an image
+        if (fileType === 'image') {
+            try {
+                uploadFile = await compressImage(file);
+            } catch (err) {
+                console.warn("Compression failed, using original file", err);
+            }
+        }
+
         const fileName = `${user.id}/${id}/${Date.now()}.${fileExt}`;
         const filePath = fileName;
 
         const { error: uploadError } = await supabase.storage
             .from('memories')
-            .upload(filePath, file);
+            .upload(filePath, uploadFile);
         
         if (uploadError) throw uploadError;
 
@@ -252,7 +269,7 @@ export default function MemoryDetail() {
                 memory_id: id,
                 section_id: sectionId,
                 file_url: publicUrl,
-                file_type: 'image',
+                file_type: fileType,
                 storage_path: filePath
             }]);
 
@@ -301,6 +318,41 @@ export default function MemoryDetail() {
        console.error("Error generating token:", err);
        alert("Failed to generate share link");
      }
+  };
+
+  const handleDownloadAll = async () => {
+    if (!currentMedia || currentMedia.length === 0) return;
+    
+    setIsDownloading(true);
+    try {
+      const zip = new JSZip();
+      const folderName = activeSection ? activeSection.title : memory.title;
+      const folder = zip.folder(folderName);
+      
+      if (!folder) throw new Error("Failed to create zip folder");
+
+      const downloadPromises = currentMedia.map(async (media: any, index: number) => {
+        try {
+          const response = await fetch(media.file_url);
+          const blob = await response.blob();
+          const filename = `photo-${index + 1}.jpg`;
+          folder.file(filename, blob);
+        } catch (err) {
+          console.error(`Failed to download ${media.file_url}`, err);
+        }
+      });
+
+      await Promise.all(downloadPromises);
+      
+      const content = await zip.generateAsync({ type: "blob" });
+      saveAs(content, `${folderName}.zip`);
+      
+    } catch (error) {
+      console.error("Error creating zip:", error);
+      alert("Failed to download all photos.");
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   const handleDownload = async (url: string, filename: string) => {
@@ -674,7 +726,18 @@ export default function MemoryDetail() {
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
                     {t('unsorted_photos')}
                   </h3>
-                  {isOwner && (
+                  <div className="flex items-center gap-3">
+                    {currentMedia && currentMedia.length > 0 && (
+                        <button
+                        onClick={handleDownloadAll}
+                        disabled={isDownloading}
+                        className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 disabled:opacity-50"
+                        >
+                        {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                        {isDownloading ? 'Zipping...' : 'Download All'}
+                        </button>
+                    )}
+                    {isOwner && (
                      <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                         {isUploading ? <Loader2 className="animate-spin h-4 w-4" /> : <Upload className="h-4 w-4" />}
                         {isUploading ? t('uploading') : t('upload_photo')}
@@ -687,17 +750,27 @@ export default function MemoryDetail() {
                         />
                      </label>
                   )}
+                  </div>
                 </div>
                 
                 {currentMedia && currentMedia.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4 block">
                     {currentMedia.map((media: any) => (
                       <div 
                         key={media.id} 
-                        className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer"
+                        className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4"
                         onClick={() => setSelectedMedia(media)}
                       >
-                        <img src={media.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                        {media.file_type === 'video' ? (
+                          <div className="relative w-full h-auto">
+                            <video src={media.file_url} className="w-full h-auto rounded-xl" muted playsInline />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                              <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                            </div>
+                          </div>
+                        ) : (
+                          <img src={media.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                        )}
                         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
                       </div>
                     ))}
@@ -715,15 +788,23 @@ export default function MemoryDetail() {
           {activeSectionId && (
             <div>
                {currentMedia && currentMedia.length > 0 ? (
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                  <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4 block">
                     {currentMedia.map((media: any) => (
                       <div 
                         key={media.id} 
-                        className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer"
+                        className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4"
                         onClick={() => setSelectedMedia(media)}
                       >
-                        <img src={media.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                        {media.file_type === 'video' ? (
+                          <div className="relative w-full h-auto">
+                            <video src={media.file_url} className="w-full h-auto rounded-xl" muted playsInline />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
+                              <Play className="h-12 w-12 text-white fill-white opacity-80" />
+                            </div>
+                          </div>
+                        ) : (
+                          <img src={media.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
+                        )}
                       </div>
                     ))}
                   </div>
@@ -766,11 +847,20 @@ export default function MemoryDetail() {
           </button>
           
           <div className="relative max-w-6xl w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
-             <img 
-               src={selectedMedia.file_url} 
-               alt="Full view" 
-               className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
-             />
+             {selectedMedia.file_type === 'video' ? (
+               <video 
+                 src={selectedMedia.file_url} 
+                 controls 
+                 autoPlay 
+                 className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
+               />
+             ) : (
+               <img 
+                 src={selectedMedia.file_url} 
+                 alt="Full view" 
+                 className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
+               />
+             )}
              
              <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-4">
                 <button

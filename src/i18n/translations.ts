@@ -83,6 +83,8 @@ export const translations = {
     loading: "Loading...",
     have_account: "Already have an account?",
     no_account: "Don't have an account?",
+    your_name: "Your Name",
+    leave_message: "Leave a message...",
   },
   es: {
     // Navbar
@@ -168,6 +170,8 @@ export const translations = {
     loading: "Cargando...",
     have_account: "¿Ya tienes cuenta?",
     no_account: "¿No tienes cuenta?",
+    your_name: "Tu Nombre",
+    leave_message: "Deja un mensaje...",
   }
 };
 
