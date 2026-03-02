@@ -8,6 +8,7 @@ import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { compressImage } from '@/lib/utils';
 import { cn } from '@/lib/utils';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function PublicMemory() {
   const { token } = useParams<{ token: string }>();
@@ -253,6 +254,25 @@ export default function PublicMemory() {
     } catch (error) { console.error('Download failed:', error); alert('Error downloading image'); }
   };
 
+  const getSelectedIndex = () => {
+     if (!selectedMedia || !currentMedia) return -1;
+     return currentMedia.findIndex((m: any) => m.id === selectedMedia.id);
+  };
+
+  const handleNextMedia = () => {
+     const index = getSelectedIndex();
+     if (index === -1 || !currentMedia) return;
+     const nextIndex = (index + 1) % currentMedia.length;
+     setSelectedMedia(currentMedia[nextIndex]);
+  };
+
+  const handlePrevMedia = () => {
+     const index = getSelectedIndex();
+     if (index === -1 || !currentMedia) return;
+     const prevIndex = (index - 1 + currentMedia.length) % currentMedia.length;
+     setSelectedMedia(currentMedia[prevIndex]);
+  };
+
   if (isLoading) return <div className="flex justify-center items-center h-screen bg-white"><Loader2 className="animate-spin h-8 w-8 text-black" /></div>;
   if (error || !sharedData) return <div className="flex flex-col items-center justify-center h-screen bg-white px-4 text-center"><Globe className="h-12 w-12 text-gray-300 mb-4" /><h1 className="text-xl font-bold mb-2">Memory Not Found</h1><p className="text-gray-500">This link might be expired or invalid.</p></div>;
 
@@ -301,7 +321,7 @@ export default function PublicMemory() {
                     <label className={cn("cursor-pointer px-6 py-2.5 rounded-full text-sm font-bold transition-all flex items-center gap-2 shadow-lg hover:scale-105 active:scale-95", isUploading && "opacity-50 cursor-not-allowed", coverImage ? 'bg-white text-black hover:bg-white/90 shadow-black/20' : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20')}>
                         {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
                         <span className="hidden sm:inline">{t('add_photo')}</span>
-                        <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={isUploading} />
+                        <input type="file" className="hidden" accept="image/*,video/*" multiple onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={isUploading} />
                     </label>
                 )}
             </div>
@@ -509,20 +529,65 @@ export default function PublicMemory() {
       )}
 
       {/* Lightbox */}
+      <AnimatePresence>
       {selectedMedia && (
-        <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setSelectedMedia(null)}>
-            <button className="absolute top-4 right-4 p-3 text-white/50 hover:text-white transition-colors bg-white/5 rounded-full hover:bg-white/10" onClick={() => setSelectedMedia(null)}>
+        <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4" 
+            onClick={() => setSelectedMedia(null)}
+        >
+            <button 
+               className="fixed top-6 right-6 z-[60] p-3 bg-white text-black rounded-full hover:bg-gray-200 transition-all shadow-xl" 
+               onClick={(e) => { e.stopPropagation(); setSelectedMedia(null); }}
+            >
                <X className="w-6 h-6" />
             </button>
             
-            <div className="relative max-w-7xl max-h-screen w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+            <motion.div 
+               className="relative max-w-7xl max-h-screen w-full h-full flex flex-col items-center justify-center" 
+               onClick={e => e.stopPropagation()}
+               drag
+               dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
+               dragElastic={0.8}
+               onDragEnd={(e, { offset, velocity }) => {
+                   const swipe = offset.x;
+                   const verticalSwipe = offset.y;
+
+                   // Vertical Swipe Down to Close
+                   if (verticalSwipe > 100) {
+                       setSelectedMedia(null);
+                       return;
+                   }
+
+                   // Horizontal Swipe for Navigation
+                   if (swipe < -50) {
+                       handleNextMedia();
+                   } else if (swipe > 50) {
+                       handlePrevMedia();
+                   }
+               }}
+            >
                {selectedMedia.file_type === 'video' ? (
-                   <video src={selectedMedia.file_url} controls autoPlay className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+                   <video 
+                     src={selectedMedia.file_url} 
+                     controls 
+                     autoPlay 
+                     className="max-w-full max-h-[85vh] rounded-lg shadow-2xl pointer-events-auto" 
+                   />
                ) : (
-                   <img src={selectedMedia.file_url} className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm" />
+                   <motion.img 
+                     key={selectedMedia.id}
+                     initial={{ opacity: 0, scale: 0.95 }}
+                     animate={{ opacity: 1, scale: 1 }}
+                     transition={{ duration: 0.2 }}
+                     src={selectedMedia.file_url} 
+                     className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm pointer-events-none select-none" 
+                   />
                )}
                
-               <div className="absolute bottom-8 flex gap-4">
+               <div className="absolute bottom-8 flex gap-4 pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
                   <button 
                      onClick={() => handleDownload(selectedMedia.file_url, `photo-${selectedMedia.id}.jpg`)}
                      className="bg-white text-black px-6 py-2 rounded-full text-sm font-bold hover:bg-white/90 transition-colors flex items-center gap-2"
@@ -530,9 +595,25 @@ export default function PublicMemory() {
                      <Download className="w-4 h-4" /> {t('download')}
                   </button>
                </div>
-            </div>
-         </div>
+            </motion.div>
+
+             {/* Navigation Arrows */}
+             <button 
+                 className="fixed left-4 top-1/2 -translate-y-1/2 p-4 text-white/50 hover:text-white transition-colors z-[60] hidden md:block"
+                 onClick={(e) => { e.stopPropagation(); handlePrevMedia(); }}
+             >
+                 <ChevronLeft className="w-8 h-8" />
+             </button>
+             <button 
+                 className="fixed right-4 top-1/2 -translate-y-1/2 p-4 text-white/50 hover:text-white transition-colors z-[60] hidden md:block"
+                 onClick={(e) => { e.stopPropagation(); handleNextMedia(); }}
+             >
+                 <ChevronRight className="w-8 h-8" />
+             </button>
+
+         </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
