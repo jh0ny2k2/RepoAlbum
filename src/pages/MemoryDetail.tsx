@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, ArrowLeft, Calendar as CalendarIcon, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil, Play, LayoutGrid, List, ChevronLeft, ChevronRight, Grid, Layout, Share2, Check } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar as CalendarIcon, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil, Play, LayoutGrid, List, ChevronLeft, ChevronRight, Grid, Layout, Share2, Check, QrCode } from 'lucide-react';
+import QRCode from 'react-qr-code';
 import { useAuthStore } from '@/store/auth';
 import { useLanguageStore } from '@/store/language';
 import JSZip from 'jszip';
@@ -10,6 +11,7 @@ import { saveAs } from 'file-saver';
 import { compressImage } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import SEO from '@/components/SEO';
 
 export default function MemoryDetail() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +28,9 @@ export default function MemoryDetail() {
   const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   
+  const [showQR, setShowQR] = useState(false);
+  const [shareUrl, setShareUrl] = useState('');
+
   // Edit Mode State (Memory)
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -380,6 +385,17 @@ export default function MemoryDetail() {
      } catch (err: any) { console.error("Error generating token:", err); alert("Failed to generate share link"); }
   };
 
+  const handleShowQR = async () => {
+    if (!memory || !id) return;
+    try {
+      const { data: token, error } = await supabase.rpc('generate_share_token', { p_memory_id: id });
+      if (error) throw error;
+      const url = `${window.location.origin}/share/${token}`;
+      setShareUrl(url);
+      setShowQR(true);
+    } catch (err: any) { console.error("Error generating token:", err); alert("Failed to generate QR code"); }
+  };
+
   const handleDownload = async (url: string, filename: string) => {
     try {
       const response = await fetch(url);
@@ -419,6 +435,12 @@ export default function MemoryDetail() {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-sans">
+      <SEO 
+        title={memory.title} 
+        description={memory.content?.substring(0, 160) || "View this memory"}
+        image={currentCoverMedia?.file_url}
+        type="article"
+      />
       {/* Sticky Header */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${currentCoverMedia ? 'bg-transparent text-white' : 'bg-background/80 backdrop-blur-xl border-b border-border text-foreground'}`}>
          <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -467,6 +489,9 @@ export default function MemoryDetail() {
                         <div className="flex items-center gap-1">
                            <button onClick={() => setIsEditing(!isEditing)} className={cn("p-2 rounded-full transition-colors", isEditing ? (currentCoverMedia ? "bg-white text-black" : "bg-primary text-primary-foreground") : (currentCoverMedia ? "text-white hover:bg-white/20" : "text-muted-foreground hover:text-foreground hover:bg-secondary"))}>
                               {isEditing ? <Check className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
+                           </button>
+                           <button onClick={handleShowQR} className={`p-2 rounded-full transition-colors ${currentCoverMedia ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`} title="Print QR Code">
+                              <QrCode className="w-5 h-5" />
                            </button>
                            <button onClick={handleShare} className={`p-2 rounded-full transition-colors ${currentCoverMedia ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
                               <Share2 className="w-5 h-5" />
@@ -724,6 +749,54 @@ export default function MemoryDetail() {
 
       {/* Lightbox - Minimal & Cinematic */}
       <AnimatePresence>
+      {showQR && (
+        <div className="fixed inset-0 z-[70] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowQR(false)}>
+            <div className="bg-white text-black p-8 rounded-3xl max-w-sm w-full text-center space-y-6" onClick={e => e.stopPropagation()}>
+                <div className="space-y-2">
+                    <h3 className="text-2xl font-serif font-bold">Share this Memory</h3>
+                    <p className="text-gray-500 text-sm">Scan to upload photos & view album</p>
+                </div>
+                
+                <div className="bg-white p-4 rounded-xl border-2 border-gray-100 inline-block">
+                    <QRCode value={shareUrl} size={200} />
+                </div>
+
+                <div className="flex flex-col gap-3">
+                    <button 
+                        onClick={() => window.print()}
+                        className="w-full py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-colors"
+                    >
+                        Print Poster
+                    </button>
+                    <button 
+                        onClick={() => setShowQR(false)}
+                        className="w-full py-3 bg-gray-100 text-gray-900 rounded-xl font-bold hover:bg-gray-200 transition-colors"
+                    >
+                        Close
+                    </button>
+                </div>
+            </div>
+            
+            {/* Printable Area (Hidden by default, shown on print) */}
+            <div className="hidden print:flex fixed inset-0 z-[100] bg-white flex-col items-center justify-center text-center p-12">
+                <h1 className="text-6xl font-serif font-bold mb-4">Capture the Moment</h1>
+                <p className="text-2xl text-gray-500 mb-12">Scan to upload your photos to our shared album</p>
+                <QRCode value={shareUrl} size={400} />
+                <p className="mt-12 text-xl font-medium text-gray-400">Powered by Lumina</p>
+            </div>
+            <style>{`
+                @media print {
+                    body * {
+                        visibility: hidden;
+                    }
+                    .print\\:flex, .print\\:flex * {
+                        visibility: visible;
+                    }
+                }
+            `}</style>
+        </div>
+      )}
+
       {selectedMedia && (
          <motion.div 
             initial={{ opacity: 0 }}

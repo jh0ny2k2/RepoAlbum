@@ -92,6 +92,26 @@ export const translations = {
     title_placeholder: "Title your memory...",
     add_location: "Add location",
     story_placeholder: "Tell your story... What made this moment special?",
+
+    // Weddings Landing
+    wedding_hero_tag: "For Modern Couples",
+    wedding_hero_title: "Collect every moment from your",
+    wedding_hero_title_highlight: "special day",
+    wedding_hero_desc: "Your guests take hundreds of photos. Don't let them get lost in WhatsApp chats or compressed on Instagram. Collect them all in one beautiful, private gallery.",
+    wedding_cta_create: "Create Your Album",
+    wedding_cta_demo: "View Demo",
+    wedding_how_title: "How it works",
+    wedding_how_desc: "Three simple steps to capture every memory from every angle.",
+    wedding_step_1_title: "1. Create Album",
+    wedding_step_1_desc: "Set up your private wedding album in seconds. Customize it with your details.",
+    wedding_step_2_title: "2. Print QR Code",
+    wedding_step_2_desc: "Place our elegant QR codes on tables. Guests scan to upload photos instantly—no app required.",
+    wedding_step_3_title: "3. Keep Forever",
+    wedding_step_3_desc: "Download everything in full quality. Keep your memories safe and private forever.",
+    wedding_feature_title: "Ready to capture your story?",
+    wedding_feature_desc: "Join thousands of couples who trust Lumina to keep their memories safe. Start for free today.",
+    wedding_cta_start: "Start for Free",
+    wedding_footer_rights: "Lumina. All rights reserved.",
   },
   es: {
     // Navbar
@@ -186,6 +206,26 @@ export const translations = {
     title_placeholder: "Ponle un título a tu recuerdo...",
     add_location: "Añadir ubicación",
     story_placeholder: "Cuenta tu historia... ¿Qué hizo que este momento fuera especial?",
+
+    // Weddings Landing
+    wedding_hero_tag: "Para Parejas Modernas",
+    wedding_hero_title: "Recopila cada momento de tu",
+    wedding_hero_title_highlight: "día especial",
+    wedding_hero_desc: "Tus invitados toman cientos de fotos. No dejes que se pierdan en chats de WhatsApp o se compriman en Instagram. Recopílalas todas en una galería hermosa y privada.",
+    wedding_cta_create: "Crea Tu Álbum",
+    wedding_cta_demo: "Ver Demo",
+    wedding_how_title: "Cómo funciona",
+    wedding_how_desc: "Tres pasos simples para capturar cada recuerdo desde cada ángulo.",
+    wedding_step_1_title: "1. Crea el Álbum",
+    wedding_step_1_desc: "Configura tu álbum de boda privado en segundos. Personalízalo con tus detalles.",
+    wedding_step_2_title: "2. Imprime el Código QR",
+    wedding_step_2_desc: "Coloca nuestros elegantes códigos QR en las mesas. Los invitados escanean para subir fotos al instante, sin necesidad de app.",
+    wedding_step_3_title: "3. Guarda para Siempre",
+    wedding_step_3_desc: "Descarga todo en calidad completa. Mantén tus recuerdos seguros y privados para siempre.",
+    wedding_feature_title: "¿Listo para capturar tu historia?",
+    wedding_feature_desc: "Únete a miles de parejas que confían en Lumina para mantener sus recuerdos seguros. Empieza gratis hoy.",
+    wedding_cta_start: "Empezar Gratis",
+    wedding_footer_rights: "Lumina. Todos los derechos reservados.",
   }
 };
 

@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { useLanguageStore } from '@/store/language';
 import MemoryGrid from '@/components/MemoryGrid';
+import SEO from '@/components/SEO';
 
 export default function Dashboard() {
   const { user } = useAuthStore();
@@ -89,6 +90,10 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-12 pb-32 max-w-7xl mx-auto px-4 sm:px-6">
+      <SEO 
+        title={t('dashboard_title')} 
+        description="Your personal memory dashboard." 
+      />
       {/* Modern Minimal Header */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-12 pt-12 pb-8 border-b border-border/20">
         <div className="space-y-4">

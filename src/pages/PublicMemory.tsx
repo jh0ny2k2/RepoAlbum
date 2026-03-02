@@ -2,13 +2,14 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Calendar as CalendarIcon, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send, LayoutGrid, List, ChevronLeft, ChevronRight, Calendar, Grid } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send, LayoutGrid, List, ChevronLeft, ChevronRight, Calendar, Grid, Sparkles, Share2 } from 'lucide-react';
 import { useLanguageStore } from '@/store/language';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { compressImage } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 import { motion, AnimatePresence } from 'framer-motion';
+import SEO from '@/components/SEO';
 
 export default function PublicMemory() {
   const { token } = useParams<{ token: string }>();
@@ -278,6 +279,12 @@ export default function PublicMemory() {
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
+      <SEO 
+        title={memory.title} 
+        description={memory.content?.substring(0, 160) || "Shared Memory"}
+        image={coverImage?.file_url}
+        type="article"
+      />
       {/* Sticky Header */}
       <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${coverImage ? 'bg-transparent text-white' : 'bg-background/80 backdrop-blur-xl border-b border-border text-foreground'}`}>
          <div className="max-w-7xl mx-auto px-4 h-20 flex items-center justify-between">
@@ -614,6 +621,30 @@ export default function PublicMemory() {
          </motion.div>
       )}
       </AnimatePresence>
+
+      {/* Viral Loop / Marketing Footer */}
+      <footer className="py-12 border-t border-border mt-20 bg-secondary/10">
+        <div className="max-w-7xl mx-auto px-4 flex flex-col items-center text-center space-y-6">
+            <div className="p-3 bg-primary/10 rounded-full text-primary">
+                <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+                <h3 className="text-xl font-bold mb-2">Create your own shared album</h3>
+                <p className="text-muted-foreground max-w-md mx-auto">
+                    Loved viewing this memory? Start your own free secure album and share moments with friends and family.
+                </p>
+            </div>
+            <Link 
+                to="/signup" 
+                className="bg-foreground text-background px-8 py-3 rounded-full font-bold hover:opacity-90 transition-all shadow-lg hover:scale-105"
+            >
+                Get Started for Free
+            </Link>
+            <p className="text-xs text-muted-foreground pt-4">
+                Powered by <span className="font-bold text-foreground">Lumina</span>
+            </p>
+        </div>
+      </footer>
     </div>
   );
 }
