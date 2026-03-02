@@ -54,10 +54,10 @@ export default function App() {
             
             {/* Protected Routes */}
             <Route path="/app" element={<ProtectedRoute />}>
+              <Route path="memories/:id" element={<MemoryDetail />} />
               <Route element={<Layout />}>
                 <Route index element={<Dashboard />} />
                 <Route path="memories/new" element={<CreateMemory />} />
-                <Route path="memories/:id" element={<MemoryDetail />} />
                 {/* Add more protected routes here */}
               </Route>
             </Route>

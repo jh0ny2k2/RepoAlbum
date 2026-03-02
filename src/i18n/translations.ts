@@ -85,6 +85,13 @@ export const translations = {
     no_account: "Don't have an account?",
     your_name: "Your Name",
     leave_message: "Leave a message...",
+    back: "Back",
+    publish: "Publish",
+    remove: "Remove",
+    add_cover_image: "Add a cover image",
+    title_placeholder: "Title your memory...",
+    add_location: "Add location",
+    story_placeholder: "Tell your story... What made this moment special?",
   },
   es: {
     // Navbar
@@ -172,6 +179,13 @@ export const translations = {
     no_account: "¿No tienes cuenta?",
     your_name: "Tu Nombre",
     leave_message: "Deja un mensaje...",
+    back: "Volver",
+    publish: "Publicar",
+    remove: "Quitar",
+    add_cover_image: "Añadir imagen de portada",
+    title_placeholder: "Ponle un título a tu recuerdo...",
+    add_location: "Añadir ubicación",
+    story_placeholder: "Cuenta tu historia... ¿Qué hizo que este momento fuera especial?",
   }
 };
 

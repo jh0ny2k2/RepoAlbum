@@ -1,13 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, ArrowLeft, Calendar as CalendarIcon, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil, Play, LayoutGrid, List, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Loader2, ArrowLeft, Calendar as CalendarIcon, MapPin, Lock, Globe, Users, Tag, Trash2, Plus, FolderPlus, Image as ImageIcon, Folder, Upload, X, Download, Edit, Save, MoreVertical, Pencil, Play, LayoutGrid, List, ChevronLeft, ChevronRight, Grid, Layout, Share2, Check } from 'lucide-react';
 import { useAuthStore } from '@/store/auth';
 import { useLanguageStore } from '@/store/language';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import { compressImage } from '@/lib/utils';
+import { cn } from '@/lib/utils';
 
 export default function MemoryDetail() {
   const { id } = useParams<{ id: string }>();
@@ -21,12 +22,9 @@ export default function MemoryDetail() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [selectedMedia, setSelectedMedia] = useState<any | null>(null);
-  const [isPlayingSlideshow, setIsPlayingSlideshow] = useState(false);
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [selectedDay, setSelectedDay] = useState<{date: string, media: any[]} | null>(null);
-
+  
   // Edit Mode State (Memory)
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -46,7 +44,7 @@ export default function MemoryDetail() {
     queryFn: async () => {
       if (!id) throw new Error('Memory ID is required');
 
-      const { data, error } = await supabase
+      const { data: memoryData, error: memoryError } = await supabase
         .from('memories')
         .select(`
           *,
@@ -59,38 +57,57 @@ export default function MemoryDetail() {
               name
             )
           ),
-          memory_media (
-            id,
-            file_url,
-            file_type,
-            section_id,
-            storage_path,
-            created_at
-          ),
           memory_sections (
             id,
             title,
-            created_at
+            created_at,
+            cover_media_id
           )
         `)
         .eq('id', id)
         .order('created_at', { foreignTable: 'memory_sections', ascending: true })
         .single();
 
-      if (error) throw error;
-      return data;
+      if (memoryError) throw memoryError;
+
+      const { data: mediaData, error: mediaError } = await supabase
+        .from('memory_media')
+        .select('*')
+        .eq('memory_id', id);
+
+      if (mediaError) throw mediaError;
+
+      return {
+        ...memoryData,
+        memory_media: mediaData
+      };
     },
     enabled: !!id,
   });
 
   const isOwner = user?.id === memory?.user_id;
   const activeSection = memory?.memory_sections?.find((s: any) => s.id === activeSectionId);
-  const currentMedia = memory?.memory_media?.filter((m: any) => {
-    if (activeSectionId) return m.section_id === activeSectionId;
-    return !m.section_id;
-  });
+  
+  const currentCoverMedia = useMemo(() => {
+     if (activeSection?.cover_media_id) {
+         return memory?.memory_media?.find((m: any) => m.id === activeSection.cover_media_id);
+     }
+     if (memory?.cover_media_id) {
+         return memory?.memory_media?.find((m: any) => m.id === memory.cover_media_id);
+     }
+     return null;
+  }, [memory, activeSection]);
 
-  const groupedMedia = React.useMemo(() => {
+  // Filter media based on current view (Root vs Section)
+  const currentMedia = useMemo(() => {
+    return memory?.memory_media?.filter((m: any) => {
+      if (activeSectionId) return m.section_id === activeSectionId;
+      return !m.section_id;
+    }) || [];
+  }, [memory, activeSectionId]);
+
+  // Group media for calendar view
+  const groupedMedia = useMemo(() => {
     if (!currentMedia) return {};
     const groups: { [key: string]: any[] } = {};
     
@@ -101,15 +118,7 @@ export default function MemoryDetail() {
 
     sortedMedia.forEach((media: any) => {
       const d = new Date(media.created_at);
-      const date = d.toLocaleDateString(undefined, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-      // Store using local date string key for easier calendar matching (YYYY-MM-DD)
       const dateKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      
       if (!groups[dateKey]) groups[dateKey] = [];
       groups[dateKey].push(media);
     });
@@ -124,24 +133,23 @@ export default function MemoryDetail() {
     });
   };
 
+  // Calendar Render Logic
   const renderCalendar = () => {
     const year = currentMonth.getFullYear();
     const month = currentMonth.getMonth();
-    
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    
     const daysInMonth = lastDay.getDate();
     const startDayOfWeek = firstDay.getDay(); // 0 = Sunday
     
     const days = [];
     
-    // Empty cells for previous month
+    // Empty cells
     for (let i = 0; i < startDayOfWeek; i++) {
       days.push(<div key={`empty-${i}`} className="aspect-square bg-transparent"></div>);
     }
     
-    // Days of the month
+    // Days
     for (let d = 1; d <= daysInMonth; d++) {
       const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       const mediaForDay = groupedMedia[dateStr];
@@ -150,66 +158,40 @@ export default function MemoryDetail() {
       days.push(
         <div 
           key={d} 
-          onClick={() => hasMedia && setSelectedDay({ date: dateStr, media: mediaForDay })}
-          className={`aspect-square relative transition-all duration-300 group ${
+          onClick={() => hasMedia && setSelectedMedia(mediaForDay[0])}
+          className={cn(
+            "aspect-square relative transition-all duration-300 group rounded-xl border",
             hasMedia 
-              ? 'cursor-pointer hover:scale-110 hover:z-10 rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-4 border-white ring-1 ring-black/5' 
-              : 'rounded-full hover:bg-gray-50 flex items-center justify-center'
-          }`}
+              ? "cursor-pointer hover:scale-105 hover:z-10 border-border/50 bg-secondary/30 shadow-sm" 
+              : "border-transparent flex items-center justify-center text-muted-foreground/20"
+          )}
         >
           {hasMedia ? (
              <>
                {mediaForDay[0].file_type === 'video' ? (
-                 <video src={mediaForDay[0].file_url} className="w-full h-full object-cover rounded-full" muted />
+                 <video src={mediaForDay[0].file_url} className="w-full h-full object-cover rounded-xl" muted />
                ) : (
-                 <img src={mediaForDay[0].file_url} className="w-full h-full object-cover rounded-full" />
+                 <img src={mediaForDay[0].file_url} className="w-full h-full object-cover rounded-xl" />
                )}
-               <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/10 transition-colors rounded-full">
-                  <span className="text-white font-black text-xl drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">{d}</span>
+               <div className="absolute top-1 right-1 bg-black/40 backdrop-blur-sm rounded-md px-1.5 py-0.5">
+                  <span className="text-white font-bold text-[10px]">{d}</span>
                </div>
+               {mediaForDay.length > 1 && (
+                 <div className="absolute bottom-1 right-1 bg-primary/80 backdrop-blur-sm rounded-md px-1.5 py-0.5">
+                    <span className="text-primary-foreground font-bold text-[10px]">+{mediaForDay.length - 1}</span>
+                 </div>
+               )}
              </>
           ) : (
-             <span className="text-gray-300 font-bold text-lg group-hover:text-gray-400 transition-colors">
-                {d}
-             </span>
+             <span className="font-medium text-sm">{d}</span>
           )}
         </div>
       );
     }
-    
     return days;
   };
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-    const currentMedia = memory?.memory_media?.filter((m: any) => {
-        if (activeSectionId) return m.section_id === activeSectionId;
-        return !m.section_id;
-    });
-
-    if (isPlayingSlideshow && currentMedia && currentMedia.length > 0) {
-        // Open lightbox with first image if not open
-        if (!selectedMedia) {
-            setSelectedMedia(currentMedia[0]);
-            setCurrentSlideIndex(0);
-        }
-
-        interval = setInterval(() => {
-            setCurrentSlideIndex((prev) => {
-                const nextIndex = (prev + 1) % currentMedia.length;
-                setSelectedMedia(currentMedia[nextIndex]);
-                return nextIndex;
-            });
-        }, 3000); // 3 seconds per slide
-    }
-    return () => clearInterval(interval);
-  }, [isPlayingSlideshow, memory, activeSectionId, selectedMedia]);
-
-  const handleStopSlideshow = () => {
-    setIsPlayingSlideshow(false);
-  };
-
-  // Populate edit form when memory data loads
+  // Populate edit form
   useEffect(() => {
     if (memory) {
       setEditForm({
@@ -222,35 +204,27 @@ export default function MemoryDetail() {
     }
   }, [memory]);
 
+  // Mutations
   const updateMemoryMutation = useMutation({
     mutationFn: async (updatedData: any) => {
-        if (!id) throw new Error("No ID");
-        
-        const { date, ...rest } = updatedData;
-        const payload: any = { ...rest };
-        if (date) {
-            payload.created_at = date; 
-        }
+      if (!id) throw new Error("No ID");
+      const { date, ...rest } = updatedData;
+      const payload: any = { ...rest };
+      if (date) payload.created_at = date; 
 
-        const { error } = await supabase
-            .from('memories')
-            .update(payload)
-            .eq('id', id);
-        
-        if (error) throw error;
+      const { error } = await supabase.from('memories').update(payload).eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['memory', id] });
-        setIsEditing(false);
+      queryClient.invalidateQueries({ queryKey: ['memory', id] });
+      setIsEditing(false);
     }
   });
 
   const createSectionMutation = useMutation({
     mutationFn: async (title: string) => {
       if (!id) throw new Error('No memory ID');
-      const { error } = await supabase
-        .from('memory_sections')
-        .insert([{ memory_id: id, title }]);
+      const { error } = await supabase.from('memory_sections').insert([{ memory_id: id, title }]);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -262,10 +236,7 @@ export default function MemoryDetail() {
 
   const renameSectionMutation = useMutation({
     mutationFn: async ({ sectionId, title }: { sectionId: string, title: string }) => {
-      const { error } = await supabase
-        .from('memory_sections')
-        .update({ title })
-        .eq('id', sectionId);
+      const { error } = await supabase.from('memory_sections').update({ title }).eq('id', sectionId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -275,78 +246,57 @@ export default function MemoryDetail() {
     },
   });
 
-  const deleteSectionMutation = useMutation({
-    mutationFn: async (sectionId: string) => {
-      // First, we need to handle the photos inside.
-      // Option 1: Move them to root (set section_id = null)
-      // Option 2: Delete them.
-      // Let's assume moving to root is safer for user data.
-      
-      const { error: moveError } = await supabase
-        .from('memory_media')
-        .update({ section_id: null })
-        .eq('section_id', sectionId);
-      
-      if (moveError) throw moveError;
-
-      const { error } = await supabase
-        .from('memory_sections')
-        .delete()
-        .eq('id', sectionId);
-      if (error) throw error;
+  const setCoverMutation = useMutation({
+    mutationFn: async ({ memoryId, sectionId, mediaId }: { memoryId?: string, sectionId?: string, mediaId: string }) => {
+      if (sectionId) {
+        const { error } = await supabase.from('memory_sections').update({ cover_media_id: mediaId }).eq('id', sectionId);
+        if (error) throw error;
+      } else if (memoryId) {
+        const { error } = await supabase.from('memories').update({ cover_media_id: mediaId }).eq('id', memoryId);
+        if (error) throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['memory', id] });
+      alert("Cover updated!");
     },
   });
 
+  const deleteSectionMutation = useMutation({
+    mutationFn: async (sectionId: string) => {
+      const { error: moveError } = await supabase.from('memory_media').update({ section_id: null }).eq('section_id', sectionId);
+      if (moveError) throw moveError;
+      const { error } = await supabase.from('memory_sections').delete().eq('id', sectionId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['memory', id] }),
+  });
 
   const deleteMediaMutation = useMutation({
     mutationFn: async (media: any) => {
-      // 1. Delete from Storage
       if (media.storage_path) {
-        const { error: storageError } = await supabase.storage
-          .from('memories')
-          .remove([media.storage_path]);
-        
-        if (storageError) {
-          console.error('Storage delete error:', storageError);
-          // Continue to delete record even if storage fails? 
-          // Usually yes, to keep DB clean, but maybe warn.
-        }
+        await supabase.storage.from('memories').remove([media.storage_path]);
       }
-
-      // 2. Delete from DB
-      const { error } = await supabase
-        .from('memory_media')
-        .delete()
-        .eq('id', media.id);
-      
+      const { error } = await supabase.from('memory_media').delete().eq('id', media.id);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['memory', id] });
-      setSelectedMedia(null); // Close lightbox
+      setSelectedMedia(null);
     },
   });
 
-
+  // Handlers
   const handleDeleteMedia = async () => {
     if (!selectedMedia) return;
     if (confirm('Are you sure you want to delete this photo? This cannot be undone.')) {
-        try {
-            await deleteMediaMutation.mutateAsync(selectedMedia);
-        } catch (error) {
-            console.error('Failed to delete media:', error);
-            alert('Failed to delete photo');
-        }
+        try { await deleteMediaMutation.mutateAsync(selectedMedia); } 
+        catch (error) { console.error('Failed to delete media:', error); alert('Failed to delete photo'); }
     }
   };
 
-  const handleSaveEdit = () => {
-      updateMemoryMutation.mutate(editForm);
-  };
-
+  const handleSaveEdit = () => updateMemoryMutation.mutate(editForm);
+  
   const handleRenameSection = (e: React.FormEvent) => {
       e.preventDefault();
       if (editingSectionId && editSectionTitle.trim()) {
@@ -361,54 +311,26 @@ export default function MemoryDetail() {
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, sectionId: string | null) => {
-    if (!e.target.files || !e.target.files[0]) return;
-    if (!id || !user?.id) return;
-
+    if (!e.target.files || !e.target.files[0] || !id || !user?.id) return;
     const file = e.target.files[0];
     setIsUploading(true);
-
     try {
         let uploadFile = file;
         const fileExt = file.name.split('.').pop()?.toLowerCase();
         const isVideo = ['mp4', 'mov', 'webm'].includes(fileExt || '');
         const fileType = isVideo ? 'video' : 'image';
-
-        // Compress if it's an image
         if (fileType === 'image') {
-            try {
-                uploadFile = await compressImage(file);
-            } catch (err) {
-                console.warn("Compression failed, using original file", err);
-            }
+            try { uploadFile = await compressImage(file); } catch (err) { console.warn("Compression failed", err); }
         }
-
-        const fileName = `${user.id}/${id}/${Date.now()}.${fileExt}`;
-        const filePath = fileName;
-
-        const { error: uploadError } = await supabase.storage
-            .from('memories')
-            .upload(filePath, uploadFile);
-        
+        const filePath = `${user.id}/${id}/${Date.now()}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage.from('memories').upload(filePath, uploadFile);
         if (uploadError) throw uploadError;
-
-        const { data: { publicUrl } } = supabase.storage
-            .from('memories')
-            .getPublicUrl(filePath);
-
-        const { error: dbError } = await supabase
-            .from('memory_media')
-            .insert([{
-                memory_id: id,
-                section_id: sectionId,
-                file_url: publicUrl,
-                file_type: fileType,
-                storage_path: filePath
-            }]);
-
+        const { data: { publicUrl } } = supabase.storage.from('memories').getPublicUrl(filePath);
+        const { error: dbError } = await supabase.from('memory_media').insert([{
+            memory_id: id, section_id: sectionId, file_url: publicUrl, file_type: fileType, storage_path: filePath
+        }]);
         if (dbError) throw dbError;
-
         await queryClient.invalidateQueries({ queryKey: ['memory', id] });
-        
     } catch (error: any) {
         console.error("Upload failed:", error);
         alert(`Upload failed: ${error.message}`);
@@ -420,9 +342,7 @@ export default function MemoryDetail() {
 
   const handleCreateSection = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newSectionTitle.trim()) {
-      createSectionMutation.mutate(newSectionTitle.trim());
-    }
+    if (newSectionTitle.trim()) createSectionMutation.mutate(newSectionTitle.trim());
   };
 
   const handleDelete = async () => {
@@ -431,10 +351,7 @@ export default function MemoryDetail() {
       const { error } = await supabase.from('memories').delete().eq('id', id);
       if (error) throw error;
       navigate('/app');
-    } catch (error) {
-      console.error('Error deleting memory:', error);
-      alert('Error deleting memory');
-    }
+    } catch (error) { console.error('Error deleting memory:', error); alert('Error deleting memory'); }
   };
 
   const handleShare = async () => {
@@ -442,49 +359,10 @@ export default function MemoryDetail() {
      try {
        const { data: token, error } = await supabase.rpc('generate_share_token', { p_memory_id: id });
        if (error) throw error;
-       
        const url = `${window.location.origin}/share/${token}`;
        navigator.clipboard.writeText(url);
        alert('Public link copied to clipboard!');
-     } catch (err: any) {
-       console.error("Error generating token:", err);
-       alert("Failed to generate share link");
-     }
-  };
-
-  const handleDownloadAll = async () => {
-    if (!currentMedia || currentMedia.length === 0) return;
-    
-    setIsDownloading(true);
-    try {
-      const zip = new JSZip();
-      const folderName = activeSection ? activeSection.title : memory.title;
-      const folder = zip.folder(folderName);
-      
-      if (!folder) throw new Error("Failed to create zip folder");
-
-      const downloadPromises = currentMedia.map(async (media: any, index: number) => {
-        try {
-          const response = await fetch(media.file_url);
-          const blob = await response.blob();
-          const filename = `photo-${index + 1}.jpg`;
-          folder.file(filename, blob);
-        } catch (err) {
-          console.error(`Failed to download ${media.file_url}`, err);
-        }
-      });
-
-      await Promise.all(downloadPromises);
-      
-      const content = await zip.generateAsync({ type: "blob" });
-      saveAs(content, `${folderName}.zip`);
-      
-    } catch (error) {
-      console.error("Error creating zip:", error);
-      alert("Failed to download all photos.");
-    } finally {
-      setIsDownloading(false);
-    }
+     } catch (err: any) { console.error("Error generating token:", err); alert("Failed to generate share link"); }
   };
 
   const handleDownload = async (url: string, filename: string) => {
@@ -492,7 +370,6 @@ export default function MemoryDetail() {
       const response = await fetch(url);
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
-      
       const link = document.createElement('a');
       link.href = blobUrl;
       link.download = filename || 'download.jpg';
@@ -500,660 +377,361 @@ export default function MemoryDetail() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(blobUrl);
-    } catch (error) {
-      console.error('Download failed:', error);
-      alert('Error downloading image');
-    }
+    } catch (error) { console.error('Download failed:', error); alert('Error downloading image'); }
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <Loader2 className="animate-spin h-8 w-8 text-black" />
-      </div>
-    );
-  }
-
-  if (error || !memory) {
-    return (
-      <div className="text-center py-10">
-        <p className="text-gray-500">Error loading memory details.</p>
-        <Link to="/app" className="text-black underline mt-4 inline-block">
-          Return to Dashboard
-        </Link>
-      </div>
-    );
-  }
+  if (isLoading) return <div className="flex justify-center items-center h-screen bg-background"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>;
+  if (error || !memory) return <div className="text-center py-20 bg-background h-screen"><p className="text-muted-foreground">Unable to load memory.</p><Link to="/app" className="text-primary hover:underline mt-4 inline-block">Return to Dashboard</Link></div>;
 
   return (
-    <div className="max-w-6xl mx-auto pb-20">
-      {/* Navigation Breadcrumb */}
-      <div className="flex items-center mb-8 text-sm text-gray-500">
-        <button onClick={() => navigate('/app')} className="hover:text-black transition-colors">
-          {t('feed')}
-        </button>
-        <span className="mx-2">/</span>
-        <button 
-          onClick={() => setActiveSectionId(null)} 
-          className={`hover:text-black transition-colors ${!activeSectionId ? 'font-bold text-black' : ''}`}
-        >
-          {memory.title}
-        </button>
-        {activeSection && (
-          <>
-            <span className="mx-2">/</span>
-            <span className="font-bold text-black">{activeSection.title}</span>
-          </>
-        )}
-      </div>
-
-      <div className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm">
-        
-        {/* Header - Only show in Root View */}
-        {!activeSectionId && (
-          <div className="px-6 py-8 md:px-10 md:py-10 border-b border-gray-100">
-            {isEditing ? (
-                 /* EDIT MODE */
-                 <div className="space-y-6 animate-in fade-in duration-300">
-                    <div className="flex flex-col gap-4">
-                        <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Title</label>
-                        <input 
-                            type="text" 
-                            value={editForm.title} 
-                            onChange={e => setEditForm({...editForm, title: e.target.value})}
-                            className="text-4xl font-extrabold text-gray-900 border-b-2 border-gray-100 focus:border-black focus:ring-0 p-0 pb-2 transition-colors placeholder-gray-300"
-                            placeholder="Memory Title"
-                        />
-                    </div>
-                    
-                    <div className="flex flex-wrap gap-6">
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">Date</label>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 focus-within:border-black transition-colors">
-                                <CalendarIcon className="h-4 w-4 text-gray-400" />
-                                <input 
-                                    type="date" 
-                                    value={editForm.date}
-                                    onChange={e => setEditForm({...editForm, date: e.target.value})}
-                                    className="border-none focus:ring-0 p-0 text-sm font-medium w-full text-gray-900"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex-1 min-w-[200px]">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">Location</label>
-                            <div className="flex items-center gap-2 border border-gray-200 rounded-lg px-3 py-2 focus-within:border-black transition-colors">
-                                <MapPin className="h-4 w-4 text-gray-400" />
-                                <input 
-                                    type="text" 
-                                    value={editForm.location}
-                                    onChange={e => setEditForm({...editForm, location: e.target.value})}
-                                    placeholder="Add location"
-                                    className="border-none focus:ring-0 p-0 text-sm font-medium w-full text-gray-900 placeholder-gray-400"
-                                />
-                            </div>
-                        </div>
-                         <div className="flex-1 min-w-[200px]">
-                            <label className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2 block">Privacy</label>
-                            <div className="flex items-center gap-2">
-                                <button 
-                                    onClick={() => setEditForm({...editForm, status: 'private'})}
-                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${editForm.status === 'private' ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}
-                                >
-                                    Private
-                                </button>
-                                <button 
-                                    onClick={() => setEditForm({...editForm, status: 'public_link'})}
-                                    className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold border transition-all ${editForm.status === 'public_link' ? 'bg-black text-white border-black' : 'bg-white text-gray-500 border-gray-200 hover:border-gray-400'}`}
-                                >
-                                    Public
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2">
-                         <label className="text-xs font-bold text-gray-400 uppercase tracking-widest">Story</label>
-                         <textarea 
-                            rows={6}
-                            value={editForm.content}
-                            onChange={e => setEditForm({...editForm, content: e.target.value})}
-                            className="w-full text-lg text-gray-700 leading-relaxed border border-gray-200 rounded-xl p-4 focus:border-black focus:ring-0 transition-colors resize-none placeholder-gray-300"
-                            placeholder="Tell your story..."
-                         />
-                    </div>
-
-                    <div className="flex gap-3 pt-4 border-t border-gray-100">
-                        <button 
-                            onClick={handleSaveEdit} 
-                            disabled={updateMemoryMutation.isPending}
-                            className="bg-black text-white px-6 py-2 rounded-full font-bold text-sm hover:bg-gray-800 transition-colors flex items-center gap-2"
-                        >
-                            {updateMemoryMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Save className="h-4 w-4" />}
-                            Save Changes
-                        </button>
-                         <button 
-                            onClick={() => setIsEditing(false)} 
-                            className="bg-white text-gray-600 border border-gray-200 px-6 py-2 rounded-full font-bold text-sm hover:bg-gray-50 transition-colors"
-                        >
-                            Cancel
-                        </button>
-                    </div>
-                 </div>
-            ) : (
-                /* VIEW MODE */
-                <div className="flex flex-col md:flex-row justify-between items-start gap-6 animate-in fade-in duration-300">
-                <div className="flex-1">
-                    <h1 className="text-4xl md:text-5xl font-extrabold text-gray-900 mb-6 tracking-tight">{memory.title}</h1>
-                    
-                    <div className="flex flex-wrap items-center gap-4 text-sm text-gray-500 mb-8">
-                    <div className="flex items-center">
-                        <CalendarIcon className="h-4 w-4 mr-2 text-gray-400" />
-                        {new Date(memory.created_at).toLocaleDateString(undefined, { dateStyle: 'long' })}
-                    </div>
-                    {memory.location && (
-                        <div className="flex items-center">
-                        <div className="w-1 h-1 bg-gray-300 rounded-full mx-2"></div>
-                        <MapPin className="h-4 w-4 mr-2 text-gray-400" />
-                        {memory.location}
-                        </div>
-                    )}
-                    <div className="flex items-center">
-                        <div className="w-1 h-1 bg-gray-300 rounded-full mx-2"></div>
-                        {memory.status === 'private' && <Lock className="h-4 w-4 mr-2" />}
-                        {memory.status === 'public_link' && <Globe className="h-4 w-4 mr-2" />}
-                        {memory.status === 'circle' && <Users className="h-4 w-4 mr-2" />}
-                        <span className="capitalize">{t(memory.status as any)}</span>
-                    </div>
-                    </div>
-
-                    <p className="text-gray-600 text-lg leading-relaxed max-w-3xl whitespace-pre-wrap">
-                        {memory.content}
-                    </p>
-
-                    {memory.memory_tags && memory.memory_tags.length > 0 && (
-                    <div className="mt-8 flex flex-wrap gap-2">
-                        {memory.memory_tags.map((tagObj: any, index: number) => (
-                        <span key={index} className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                            #{tagObj.tags.name}
-                        </span>
-                        ))}
-                    </div>
-                    )}
-                </div>
-                
-                {isOwner && (
-                    <div className="flex gap-2">
-                    <button onClick={() => setIsEditing(true)} className="p-3 text-gray-400 hover:text-black hover:bg-gray-50 rounded-full transition-all border border-transparent hover:border-gray-200" title="Edit Info">
-                        <Edit className="h-5 w-5" />
-                    </button>
-                    <button onClick={handleShare} className="p-3 text-gray-400 hover:text-black hover:bg-gray-50 rounded-full transition-all border border-transparent hover:border-gray-200" title={t('share_link')}>
-                        <Globe className="h-5 w-5" />
-                    </button>
-                    <button onClick={handleDelete} className="p-3 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all border border-transparent hover:border-red-100" title={t('delete')}>
-                        <Trash2 className="h-5 w-5" />
-                    </button>
-                    </div>
-                )}
-                </div>
-            )}
-          </div>
-        )}
-
-        {/* Header - Folder View */}
-        {activeSectionId && activeSection && (
-          <div className="px-6 py-6 md:px-10 border-b border-gray-100 bg-gray-50 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-4">
+    <div className="min-h-screen bg-background text-foreground font-sans">
+      {/* Sticky Header */}
+      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${currentCoverMedia ? 'bg-transparent text-white' : 'bg-background/80 backdrop-blur-xl border-b border-border text-foreground'}`}>
+         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-3">
                <button 
-                 onClick={() => setActiveSectionId(null)}
-                 className="p-2 bg-white rounded-full shadow-sm border border-gray-200 hover:bg-gray-100 text-gray-900 transition-colors"
+                 onClick={() => activeSectionId ? setActiveSectionId(null) : navigate('/app')}
+                 className={`p-2 -ml-2 rounded-full transition-colors ${currentCoverMedia ? 'hover:bg-black/20 text-white' : 'hover:bg-secondary text-muted-foreground hover:text-foreground'}`}
                >
-                 <ArrowLeft className="h-5 w-5" />
+                  <ArrowLeft className="w-5 h-5" />
                </button>
-               <div>
-                 <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                   {activeSection.title}
-                 </h2>
+               
+               <div className="flex flex-col">
+                  <h1 className={`text-lg font-bold leading-tight truncate max-w-[200px] md:max-w-md ${currentCoverMedia ? 'text-white drop-shadow-md' : 'text-foreground'}`}>
+                     {activeSection ? activeSection.title : memory.title}
+                  </h1>
+                  {activeSection && (
+                     <span className={`text-xs ${currentCoverMedia ? 'text-white/90 drop-shadow-md' : 'text-muted-foreground'}`}>in {memory.title}</span>
+                  )}
                </div>
             </div>
-            
-            <div className="flex items-center gap-3">
-               <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200 shadow-sm">
-                    <button
-                        onClick={() => setViewMode('grid')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
-                        title="Grid View"
-                    >
-                        <LayoutGrid className="h-4 w-4" />
-                        <span className="text-xs hidden sm:inline">Grid</span>
-                    </button>
-                    <button
-                        onClick={() => setViewMode('calendar')}
-                        className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
-                        title="Calendar View"
-                    >
-                        <CalendarIcon className="h-4 w-4" />
-                        <span className="text-xs hidden sm:inline">Calendar</span>
-                    </button>
-                </div>
-                {isOwner && (
-               <label className={`cursor-pointer inline-flex items-center px-4 py-2 text-sm font-bold rounded-full text-white bg-black hover:bg-gray-800 transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  {isUploading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-                  {isUploading ? t('uploading') : t('upload_photo')}
-                  <input 
-                    type="file" 
-                    className="hidden" 
-                    accept="image/*" 
-                    onChange={(e) => handleFileUpload(e, activeSectionId)} 
-                    disabled={isUploading}
-                  />
-               </label>
-            )}
+
+            <div className="flex items-center gap-2">
+               {activeSectionId ? (
+                  // Inside Album Actions
+                  <>
+                     <div className={`hidden md:flex rounded-lg p-1 mr-2 border ${currentCoverMedia ? 'bg-black/20 border-white/20 backdrop-blur-md' : 'bg-secondary/50 border-border/50'}`}>
+                        <button onClick={() => setViewMode('grid')} className={cn("p-1.5 rounded-md transition-all", viewMode === 'grid' ? (currentCoverMedia ? 'bg-white/20 text-white' : 'bg-background shadow-sm text-foreground') : (currentCoverMedia ? 'text-white/70 hover:text-white' : 'text-muted-foreground hover:text-foreground'))}>
+                           <Grid className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => setViewMode('calendar')} className={cn("p-1.5 rounded-md transition-all", viewMode === 'calendar' ? (currentCoverMedia ? 'bg-white/20 text-white' : 'bg-background shadow-sm text-foreground') : (currentCoverMedia ? 'text-white/70 hover:text-white' : 'text-muted-foreground hover:text-foreground'))}>
+                           <CalendarIcon className="w-4 h-4" />
+                        </button>
+                     </div>
+                     {isOwner && (
+                        <label className={cn("cursor-pointer px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 shadow-lg", isUploading && "opacity-50 cursor-not-allowed", currentCoverMedia ? 'bg-white text-black hover:bg-white/90 shadow-black/20' : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20')}>
+                           {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                           <span className="hidden sm:inline">{t('upload_photo')}</span>
+                           <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={isUploading} />
+                        </label>
+                     )}
+                  </>
+               ) : (
+                  // Root Actions
+                  <>
+                     {isOwner && (
+                        <div className="flex items-center gap-1">
+                           <button onClick={() => setIsEditing(!isEditing)} className={cn("p-2 rounded-full transition-colors", isEditing ? (currentCoverMedia ? "bg-white text-black" : "bg-primary text-primary-foreground") : (currentCoverMedia ? "text-white hover:bg-white/20" : "text-muted-foreground hover:text-foreground hover:bg-secondary"))}>
+                              {isEditing ? <Check className="w-5 h-5" /> : <Edit className="w-5 h-5" />}
+                           </button>
+                           <button onClick={handleShare} className={`p-2 rounded-full transition-colors ${currentCoverMedia ? 'text-white hover:bg-white/20' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}>
+                              <Share2 className="w-5 h-5" />
+                           </button>
+                           <button onClick={handleDelete} className={`p-2 rounded-full transition-colors ${currentCoverMedia ? 'text-white hover:bg-white/20 hover:text-red-400' : 'text-muted-foreground hover:text-destructive hover:bg-destructive/10'}`}>
+                              <Trash2 className="w-5 h-5" />
+                           </button>
+                        </div>
+                     )}
+                  </>
+               )}
             </div>
+         </div>
+      </nav>
+
+      {/* Hero Cover Image */}
+      {currentCoverMedia && (
+          <div className="w-full h-[60vh] relative animate-in fade-in duration-700">
+              <img src={currentCoverMedia.file_url} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-background" />
           </div>
-        )}
-
-        {/* Content Area */}
-        <div className="px-6 py-8 md:px-10 min-h-[400px] bg-white">
-          
-          {/* Root View: Show Folders + Loose Photos */}
-          {!activeSectionId && (
-            <div className="space-y-12">
-              
-              {/* Folders Section */}
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    {t('albums')}
-                  </h3>
-                  {isOwner && !isCreatingSection && (
-                    <button 
-                      onClick={() => setIsCreatingSection(true)}
-                      className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1"
-                    >
-                      <Plus className="h-4 w-4" /> {t('new_album')}
-                    </button>
-                  )}
-                </div>
-
-                {isCreatingSection && (
-                  <form onSubmit={handleCreateSection} className="mb-6 bg-gray-50 p-4 rounded-xl border border-gray-200 flex items-center gap-3 max-w-md">
-                    <FolderPlus className="h-5 w-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder={t('album_name_placeholder')}
-                      className="flex-1 border-none focus:ring-0 text-gray-900 placeholder-gray-400 bg-transparent font-medium"
-                      value={newSectionTitle}
-                      onChange={(e) => setNewSectionTitle(e.target.value)}
-                      autoFocus
-                    />
-                    <div className="flex gap-2">
-                      <button type="submit" disabled={createSectionMutation.isPending} className="text-black font-bold hover:bg-gray-200 px-3 py-1 rounded transition-colors">{t('create')}</button>
-                      <button type="button" onClick={() => setIsCreatingSection(false)} className="text-gray-400 hover:text-gray-600 px-2 py-1 rounded">
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </form>
-                )}
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
-                  {memory.memory_sections?.map((section: any) => (
-                    editingSectionId === section.id ? (
-                        <form key={section.id} onSubmit={handleRenameSection} className="flex flex-col bg-gray-50 p-4 rounded-xl border border-black shadow-sm">
-                            <input 
-                                type="text" 
-                                value={editSectionTitle}
-                                onChange={e => setEditSectionTitle(e.target.value)}
-                                className="bg-transparent border-none p-0 text-sm font-bold text-gray-900 focus:ring-0 mb-2"
-                                autoFocus
-                            />
-                            <div className="flex gap-2 mt-auto">
-                                <button type="submit" className="text-xs bg-black text-white px-2 py-1 rounded">Save</button>
-                                <button type="button" onClick={() => setEditingSectionId(null)} className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded">Cancel</button>
-                            </div>
-                        </form>
-                    ) : (
-                        <div
-                        key={section.id}
-                        className="group relative flex flex-col text-left cursor-pointer"
-                        >
-                        {/* Folder Click Area */}
-                        <div onClick={() => setActiveSectionId(section.id)}>
-                            <div className="w-full aspect-[4/3] bg-gray-100 rounded-2xl mb-3 flex items-center justify-center group-hover:bg-gray-200 transition-colors relative overflow-hidden border border-gray-100">
-                                {(() => {
-                                const previewImage = memory.memory_media?.find((m: any) => m.section_id === section.id);
-                                if (previewImage) {
-                                    return <img src={previewImage.file_url} className="w-full h-full object-cover absolute inset-0 transition-transform duration-500 group-hover:scale-105" />;
-                                }
-                                return <Folder className="h-8 w-8 text-gray-300" />;
-                                })()}
-                            </div>
-                            <span className="font-bold text-gray-900 truncate w-full group-hover:text-gray-600 transition-colors block">{section.title}</span>
-                            <span className="text-xs text-gray-500 block">
-                                {memory.memory_media?.filter((m: any) => m.section_id === section.id).length || 0} items
-                            </span>
-                        </div>
-
-                        {/* Edit/Delete Actions (Hover) */}
-                        {isOwner && (
-                            <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        setEditingSectionId(section.id);
-                                        setEditSectionTitle(section.title);
-                                    }}
-                                    className="p-1.5 bg-white rounded-full shadow-sm text-gray-500 hover:text-black hover:bg-gray-50 transition-colors"
-                                    title="Rename"
-                                >
-                                    <Pencil className="h-3 w-3" />
-                                </button>
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteSection(section.id);
-                                    }}
-                                    className="p-1.5 bg-white rounded-full shadow-sm text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors"
-                                    title="Delete"
-                                >
-                                    <Trash2 className="h-3 w-3" />
-                                </button>
-                            </div>
-                        )}
-                        </div>
-                    )
-                  ))}
-                </div>
-              </div>
-
-              {/* Loose Photos Section */}
-              <div>
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
-                    {t('unsorted_photos')}
-                  </h3>
-                  <div className="flex items-center gap-3">
-                    {currentMedia && currentMedia.length > 0 && (
-                        <>
-                            <div className="flex bg-gray-100 rounded-lg p-1 mr-2 border border-gray-200">
-                                <button
-                                    onClick={() => setViewMode('grid')}
-                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'grid' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
-                                    title="Grid View"
-                                >
-                                    <LayoutGrid className="h-4 w-4" />
-                                    <span className="text-xs hidden sm:inline">Grid</span>
-                                </button>
-                                <button
-                                    onClick={() => setViewMode('calendar')}
-                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'bg-white shadow-sm text-black font-bold' : 'text-gray-500 hover:text-gray-900'}`}
-                                    title="Calendar View"
-                                >
-                                    <CalendarIcon className="h-4 w-4" />
-                                    <span className="text-xs hidden sm:inline">Calendar</span>
-                                </button>
-                            </div>
-                            <button
-                                onClick={() => setIsPlayingSlideshow(!isPlayingSlideshow)}
-                                className={`text-sm font-bold flex items-center gap-1 ${isPlayingSlideshow ? 'text-green-600' : 'text-black hover:text-gray-600'}`}
-                            >
-                                <Play className="h-4 w-4" />
-                                {isPlayingSlideshow ? 'Playing...' : 'Slideshow'}
-                            </button>
-                            <button
-                                onClick={handleDownloadAll}
-                                disabled={isDownloading}
-                                className="text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 disabled:opacity-50"
-                            >
-                                {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                                {isDownloading ? 'Zipping...' : 'Download All'}
-                            </button>
-                        </>
-                    )}
-                    {isOwner && (
-                     <label className={`cursor-pointer text-sm font-bold text-black hover:text-gray-600 flex items-center gap-1 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                        {isUploading ? <Loader2 className="animate-spin h-4 w-4" /> : <Upload className="h-4 w-4" />}
-                        {isUploading ? t('uploading') : t('upload_photo')}
-                        <input 
-                          type="file" 
-                          className="hidden" 
-                          accept="image/*" 
-                          onChange={(e) => handleFileUpload(e, null)} 
-                          disabled={isUploading}
-                        />
-                     </label>
-                  )}
-                  </div>
-                </div>
-                
-                {currentMedia && currentMedia.length > 0 ? (
-                  viewMode === 'grid' ? (
-                    <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4 block">
-                         {currentMedia.map((media: any) => (
-                         <div 
-                             key={media.id} 
-                             className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4"
-                             onClick={() => setSelectedMedia(media)}
-                         >
-                             {media.file_type === 'video' ? (
-                             <div className="relative w-full h-auto">
-                                 <video src={media.file_url} className="w-full h-auto rounded-xl" muted playsInline />
-                                 <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                                 <Play className="h-12 w-12 text-white fill-white opacity-80" />
-                                 </div>
-                             </div>
-                             ) : (
-                             <img src={media.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
-                             )}
-                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                         </div>
-                         ))}
-                     </div>
-                   ) : (
-                     <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white border border-gray-100 rounded-[2rem] p-4 md:p-8 shadow-sm">
-                        <div className="flex items-center justify-between mb-6 md:mb-10 px-2 md:px-4">
-                            <button onClick={() => changeMonth(-1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
-                                <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
-                            </button>
-                            <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tight capitalize text-center mx-2">
-                                {currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-                            </h2>
-                            <button onClick={() => changeMonth(1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
-                                <ChevronRight className="h-5 w-5 md:h-6 md:w-6" />
-                            </button>
-                        </div>
-                        
-                        <div className="grid grid-cols-7 mb-4 md:mb-6 text-center">
-                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                <div key={day} className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest py-2">
-                                    {day}
-                                </div>
-                            ))}
-                        </div>
-                        
-                        <div className="grid grid-cols-7 gap-1 sm:gap-4 lg:gap-6">
-                            {renderCalendar()}
-                        </div>
-                     </div>
-                   )
-                 ) : (
-                   <div className="py-12 text-center border border-dashed border-gray-200 rounded-2xl">
-                      <p className="text-sm text-gray-400 italic">No unsorted photos.</p>
-                   </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Folder View: Photos Only */}
-          {activeSectionId && (
-            <div>
-               {currentMedia && currentMedia.length > 0 ? (
-                  viewMode === 'grid' ? (
-                    <div className="columns-2 sm:columns-3 md:columns-4 lg:columns-5 gap-4 space-y-4 block">
-                        {currentMedia.map((media: any) => (
-                        <div 
-                            key={media.id} 
-                            className="break-inside-avoid rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer mb-4"
-                            onClick={() => setSelectedMedia(media)}
-                        >
-                            {media.file_type === 'video' ? (
-                            <div className="relative w-full h-auto">
-                                <video src={media.file_url} className="w-full h-auto rounded-xl" muted playsInline />
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                                <Play className="h-12 w-12 text-white fill-white opacity-80" />
-                                </div>
-                            </div>
-                            ) : (
-                            <img src={media.file_url} alt="" className="w-full h-auto object-cover transition-transform duration-500 group-hover:scale-105" />
-                            )}
-                        </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 bg-white border border-gray-100 rounded-[2rem] p-4 md:p-8 shadow-sm">
-                        <div className="flex items-center justify-between mb-6 md:mb-10 px-2 md:px-4">
-                            <button onClick={() => changeMonth(-1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
-                                <ChevronLeft className="h-5 w-5 md:h-6 md:w-6" />
-                            </button>
-                            <h2 className="text-xl md:text-3xl font-black text-gray-900 tracking-tight capitalize text-center mx-2">
-                                {currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}
-                            </h2>
-                            <button onClick={() => changeMonth(1)} className="p-2 md:p-3 hover:bg-gray-50 hover:shadow-sm rounded-full transition-all text-gray-600 border border-transparent hover:border-gray-100 flex-shrink-0">
-                                <ChevronRight className="h-5 w-5 md:h-6 md:w-6" />
-                            </button>
-                        </div>
-                        
-                        <div className="grid grid-cols-7 mb-4 md:mb-6 text-center">
-                            {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                                <div key={day} className="text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest py-2">
-                                    {day}
-                                </div>
-                            ))}
-                        </div>
-                        
-                        <div className="grid grid-cols-7 gap-1 sm:gap-4 lg:gap-6">
-                            {renderCalendar()}
-                        </div>
-                     </div>
-                  )
-                ) : (
-                  <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="bg-gray-50 p-6 rounded-full mb-4">
-                       <ImageIcon className="h-8 w-8 text-gray-300" />
-                    </div>
-                    <h3 className="text-lg font-bold text-gray-900">{t('empty_album')}</h3>
-                    <p className="text-gray-500 mb-6 mt-2">{t('upload_photos_msg')}</p>
-                    {isOwner && (
-                      <label className={`cursor-pointer inline-flex items-center px-6 py-3 text-sm font-bold rounded-full text-white bg-black hover:bg-gray-800 transition-all ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                          {isUploading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <Upload className="h-4 w-4 mr-2" />}
-                          {isUploading ? t('uploading') : t('upload_first')}
-                          <input 
-                            type="file" 
-                            className="hidden" 
-                            accept="image/*" 
-                            onChange={(e) => handleFileUpload(e, activeSectionId)} 
-                            disabled={isUploading}
-                          />
-                      </label>
-                    )}
-                  </div>
-                )}
-            </div>
-          )}
-
-        </div>
-      </div>
-
-      {/* Day Detail Modal */}
-      {selectedDay && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-xl p-4" onClick={() => setSelectedDay(null)}>
-          <div className="relative max-w-5xl w-full h-[85vh] flex flex-col bg-white rounded-3xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-             <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                <h2 className="text-2xl font-bold text-gray-900">
-                    {new Date(selectedDay.date).toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                </h2>
-                <button 
-                    className="text-gray-500 hover:text-black p-2 bg-gray-100 rounded-full"
-                    onClick={() => setSelectedDay(null)}
-                >
-                    <X className="h-6 w-6" />
-                </button>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                    {selectedDay.media.map((media: any) => (
-                         <div 
-                            key={media.id} 
-                            className="aspect-square rounded-xl overflow-hidden bg-gray-100 relative group cursor-pointer"
-                            onClick={() => setSelectedMedia(media)}
-                        >
-                            {media.file_type === 'video' ? (
-                                <div className="relative w-full h-full">
-                                    <video src={media.file_url} className="w-full h-full object-cover" muted playsInline />
-                                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/40 transition-colors">
-                                        <Play className="h-8 w-8 text-white fill-white opacity-80" />
-                                    </div>
-                                </div>
-                            ) : (
-                                <img src={media.file_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                            )}
-                        </div>
-                    ))}
-                </div>
-             </div>
-          </div>
-        </div>
       )}
 
-      {/* Lightbox Modal */}
-      {selectedMedia && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/95 backdrop-blur-xl p-4" onClick={() => setSelectedMedia(null)}>
-          <button 
-            className="absolute top-4 right-4 text-gray-500 hover:text-black p-2 bg-gray-100 rounded-full"
-            onClick={() => setSelectedMedia(null)}
-          >
-            <X className="h-6 w-6" />
-          </button>
-          
-          <div className="relative max-w-6xl w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
-             {selectedMedia.file_type === 'video' ? (
-               <video 
-                 src={selectedMedia.file_url} 
-                 controls 
-                 autoPlay 
-                 className="max-w-full max-h-[85vh] rounded-lg shadow-2xl"
-               />
-             ) : (
-               <img 
-                 src={selectedMedia.file_url} 
-                 alt="Full view" 
-                 className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl" 
-               />
-             )}
-             
-             <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-4">
-                <button
-                  onClick={() => handleDownload(selectedMedia.file_url, `memory-${id}-${selectedMedia.id}.jpg`)}
-                  className="flex items-center gap-2 bg-black text-white px-6 py-3 rounded-full font-bold hover:bg-gray-800 transition-all shadow-xl hover:scale-105"
-                >
-                  <Download className="h-4 w-4" />
-                  {t('download')}
-                </button>
+      <div className={`max-w-5xl mx-auto px-4 pb-32 ${currentCoverMedia ? '-mt-20 relative z-10' : 'pt-24'}`}>
+        {/* Content Area */}
+        {!activeSectionId ? (
+           /* ROOT VIEW */
+           <div className="space-y-12 animate-in fade-in duration-500">
+              
+              {/* Memory Header & Details */}
+              <div className="space-y-6">
+                 {!isEditing ? (
+                    <div className="space-y-4">
+                       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-2 px-3 py-1 bg-secondary/30 border border-border/50 rounded-full">
+                             <CalendarIcon className="w-3.5 h-3.5" />
+                             {new Date(memory.created_at).toLocaleDateString()}
+                          </div>
+                          {memory.location && (
+                             <div className="flex items-center gap-2 px-3 py-1 bg-secondary/30 border border-border/50 rounded-full">
+                                <MapPin className="w-3.5 h-3.5" />
+                                {memory.location}
+                             </div>
+                          )}
+                          <div className="flex items-center gap-2 px-3 py-1 bg-secondary/30 border border-border/50 rounded-full capitalize">
+                             {memory.status === 'private' ? <Lock className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
+                             {t(memory.status as any)}
+                          </div>
+                       </div>
+                       
+                       <p className="text-lg md:text-xl text-foreground/90 leading-relaxed whitespace-pre-wrap font-light">
+                          {memory.content}
+                       </p>
+                    </div>
+                 ) : (
+                    /* EDIT FORM */
+                    <div className="bg-card border border-border p-6 rounded-2xl space-y-6 shadow-sm">
+                       <div className="space-y-2">
+                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('title_placeholder')}</label>
+                           <input 
+                               type="text" 
+                               value={editForm.title} 
+                               onChange={e => setEditForm({...editForm, title: e.target.value})}
+                               className="text-2xl font-bold bg-transparent border-b border-border w-full pb-2 focus:border-primary focus:ring-0 px-0 placeholder:text-muted-foreground/50"
+                               placeholder={t('title_placeholder')}
+                           />
+                       </div>
+                       <div className="space-y-2">
+                           <label className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t('story_placeholder')}</label>
+                           <textarea 
+                               value={editForm.content}
+                               onChange={e => setEditForm({...editForm, content: e.target.value})}
+                               className="w-full bg-secondary/30 rounded-xl border-none p-4 min-h-[150px] resize-none focus:ring-1 focus:ring-border placeholder:text-muted-foreground/50"
+                               placeholder={t('story_placeholder')}
+                           />
+                       </div>
+                       <div className="flex justify-end gap-3 pt-2">
+                           <button onClick={() => setIsEditing(false)} className="px-4 py-2 rounded-lg text-sm font-medium hover:bg-secondary transition-colors">{t('back')}</button>
+                           <button onClick={handleSaveEdit} className="bg-primary text-primary-foreground px-6 py-2 rounded-lg text-sm font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 transition-all">{t('publish')}</button>
+                       </div>
+                    </div>
+                 )}
+              </div>
 
-                {isOwner && (
-                    <button
+              <div className="h-px bg-border/50" />
+
+              {/* Albums Grid */}
+              <div className="space-y-6">
+                 <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">{t('albums')}</h3>
+                    {isOwner && !isCreatingSection && (
+                       <button onClick={() => setIsCreatingSection(true)} className="text-sm font-bold text-primary hover:text-primary/80 flex items-center gap-1 transition-colors">
+                          <Plus className="w-4 h-4" /> {t('new_album')}
+                       </button>
+                    )}
+                 </div>
+
+                 {isCreatingSection && (
+                    <form onSubmit={handleCreateSection} className="flex gap-2 max-w-md animate-in fade-in slide-in-from-left-4 mb-6">
+                       <input
+                          autoFocus
+                          type="text"
+                          placeholder={t('album_name_placeholder')}
+                          className="flex-1 bg-secondary/50 border-none rounded-lg px-4 py-2 text-sm focus:ring-1 focus:ring-primary"
+                          value={newSectionTitle}
+                          onChange={(e) => setNewSectionTitle(e.target.value)}
+                       />
+                       <button type="submit" className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-bold">{t('create')}</button>
+                       <button type="button" onClick={() => setIsCreatingSection(false)} className="p-2 hover:bg-secondary rounded-lg"><X className="w-4 h-4" /></button>
+                    </form>
+                 )}
+
+                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+                    {memory.memory_sections?.map((section: any) => (
+                       <div key={section.id} className="group cursor-pointer" onClick={() => setActiveSectionId(section.id)}>
+                          <div className="aspect-[4/3] bg-secondary/30 rounded-2xl overflow-hidden relative mb-3 border border-border/50 transition-all duration-500 group-hover:shadow-xl group-hover:border-primary/20 group-hover:-translate-y-1">
+                             {/* Dynamic Cover Image Logic */}
+                             {(() => {
+                                 let previewUrl = null;
+                                 if (section.cover_media_id) {
+                                    const cover = memory.memory_media?.find((m: any) => m.id === section.cover_media_id);
+                                    if (cover) previewUrl = cover.file_url;
+                                 } else {
+                                    const first = memory.memory_media?.find((m: any) => m.section_id === section.id);
+                                    if (first) previewUrl = first.file_url;
+                                 }
+                                 
+                                 return previewUrl ? (
+                                    <img src={previewUrl} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                                 ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-muted-foreground/20 group-hover:text-primary/50 transition-colors">
+                                       <Folder className="w-12 h-12" />
+                                    </div>
+                                 );
+                             })()}
+                             
+                             {/* Overlay */}
+                             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                             
+                             {/* Hover Actions */}
+                             {isOwner && (
+                                <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                   <button 
+                                      onClick={(e) => { e.stopPropagation(); handleDeleteSection(section.id); }}
+                                      className="p-1.5 bg-black/40 text-white backdrop-blur-md rounded-full hover:bg-destructive transition-colors"
+                                   >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                   </button>
+                                </div>
+                             )}
+                          </div>
+                          <div className="flex justify-between items-start">
+                              <div>
+                                  <h4 className="font-bold text-foreground group-hover:text-primary transition-colors text-sm md:text-base leading-tight">{section.title}</h4>
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {memory.memory_media?.filter((m: any) => m.section_id === section.id).length || 0} items
+                                  </p>
+                              </div>
+                          </div>
+                       </div>
+                    ))}
+                    
+                    {/* Empty State for Albums */}
+                    {(!memory.memory_sections || memory.memory_sections.length === 0) && !isCreatingSection && (
+                        <button 
+                            onClick={() => setIsCreatingSection(true)}
+                            className="aspect-[4/3] flex flex-col items-center justify-center gap-3 bg-secondary/20 rounded-2xl border-2 border-dashed border-border/50 hover:border-primary/50 hover:bg-secondary/40 transition-all group"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-secondary/50 flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:scale-110 transition-all">
+                                <Plus className="w-6 h-6" />
+                            </div>
+                            <span className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors">{t('new_album')}</span>
+                        </button>
+                    )}
+                 </div>
+              </div>
+
+              {/* Unsorted Photos */}
+              <div className="space-y-6">
+                 <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">{t('unsorted_photos')}</h3>
+                    {isOwner && (
+                       <label className="text-sm font-bold text-primary hover:text-primary/80 cursor-pointer flex items-center gap-1 transition-colors">
+                          <Upload className="w-4 h-4" /> {t('upload_photo')}
+                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, null)} />
+                       </label>
+                    )}
+                 </div>
+                 
+                 {/* Photo Grid (Unsorted) */}
+                 <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+                    {currentMedia?.map((media: any) => (
+                       <div key={media.id} className="break-inside-avoid relative group rounded-xl overflow-hidden cursor-zoom-in" onClick={() => setSelectedMedia(media)}>
+                          <img src={media.file_url} className="w-full h-auto transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                       </div>
+                    ))}
+                 </div>
+                 {(!currentMedia || currentMedia.length === 0) && (
+                    <div className="py-12 text-center border border-dashed border-border/50 rounded-2xl bg-secondary/10">
+                       <p className="text-muted-foreground text-sm">No unsorted photos</p>
+                    </div>
+                 )}
+              </div>
+           </div>
+        ) : (
+           /* ALBUM VIEW */
+           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {currentMedia && currentMedia.length > 0 ? (
+                 viewMode === 'grid' ? (
+                    <div className="columns-2 md:columns-3 lg:columns-4 gap-4 space-y-4">
+                       {currentMedia.map((media: any) => (
+                          <div key={media.id} className="break-inside-avoid relative group rounded-xl overflow-hidden cursor-zoom-in shadow-sm" onClick={() => setSelectedMedia(media)}>
+                             <img src={media.file_url} className="w-full h-auto transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                             {media.file_type === 'video' && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/20 group-hover:bg-black/30 transition-colors">
+                                   <Play className="w-12 h-12 text-white fill-white opacity-80 drop-shadow-lg" />
+                                </div>
+                             )}
+                          </div>
+                       ))}
+                    </div>
+                 ) : (
+                    <div className="max-w-4xl mx-auto bg-card border border-border rounded-[2rem] p-8 shadow-sm">
+                       <div className="flex items-center justify-between mb-8">
+                          <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-secondary rounded-full transition-colors"><ChevronLeft className="w-6 h-6" /></button>
+                          <h2 className="text-2xl font-black">{currentMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h2>
+                          <button onClick={() => changeMonth(1)} className="p-2 hover:bg-secondary rounded-full transition-colors"><ChevronRight className="w-6 h-6" /></button>
+                       </div>
+                       <div className="grid grid-cols-7 gap-2">
+                          {['S','M','T','W','T','F','S'].map(d => <div key={d} className="text-center text-xs font-bold text-muted-foreground py-2">{d}</div>)}
+                          {renderCalendar()}
+                       </div>
+                    </div>
+                 )
+              ) : (
+                 <div className="flex flex-col items-center justify-center py-32 text-center">
+                    <div className="bg-secondary/50 p-6 rounded-full mb-6">
+                       <ImageIcon className="w-12 h-12 text-muted-foreground/40" />
+                    </div>
+                    <h3 className="text-xl font-bold mb-2 text-foreground">{t('empty_album')}</h3>
+                    <p className="text-muted-foreground mb-8">{t('upload_photos_msg')}</p>
+                    {isOwner && (
+                       <label className="bg-primary text-primary-foreground px-8 py-3 rounded-full font-bold cursor-pointer hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center gap-2">
+                          <Upload className="w-4 h-4" />
+                          {t('upload_photo')}
+                          <input type="file" className="hidden" accept="image/*" onChange={(e) => handleFileUpload(e, activeSectionId)} />
+                       </label>
+                    )}
+                 </div>
+              )}
+           </div>
+        )}
+      </div>
+
+      {/* Lightbox - Minimal & Cinematic */}
+      {selectedMedia && (
+         <div className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-300" onClick={() => setSelectedMedia(null)}>
+            <button className="absolute top-4 right-4 p-3 text-white/50 hover:text-white transition-colors bg-white/5 rounded-full hover:bg-white/10" onClick={() => setSelectedMedia(null)}>
+               <X className="w-6 h-6" />
+            </button>
+            
+            <div className="relative max-w-7xl max-h-screen w-full h-full flex flex-col items-center justify-center" onClick={e => e.stopPropagation()}>
+               {selectedMedia.file_type === 'video' ? (
+                   <video src={selectedMedia.file_url} controls autoPlay className="max-w-full max-h-[85vh] rounded-lg shadow-2xl" />
+               ) : (
+                   <img src={selectedMedia.file_url} className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm" />
+               )}
+               
+               <div className="absolute bottom-8 flex gap-4">
+                  {isOwner && selectedMedia.file_type !== 'video' && (
+                     <button 
+                        onClick={() => setCoverMutation.mutate({ 
+                            memoryId: !activeSectionId ? id : undefined,
+                            sectionId: activeSectionId || undefined, 
+                            mediaId: selectedMedia.id 
+                        })}
+                        className="bg-white/10 text-white px-6 py-2 rounded-full text-sm font-medium hover:bg-white/20 backdrop-blur-md transition-colors border border-white/10"
+                     >
+                        {t('add_cover_image') || "Set Cover"}
+                     </button>
+                  )}
+                  <button 
+                     onClick={() => handleDownload(selectedMedia.file_url, `photo-${selectedMedia.id}.jpg`)}
+                     className="bg-white text-black px-6 py-2 rounded-full text-sm font-bold hover:bg-white/90 transition-colors flex items-center gap-2"
+                  >
+                     <Download className="w-4 h-4" /> {t('download')}
+                  </button>
+                  {isOwner && (
+                     <button 
                         onClick={handleDeleteMedia}
-                        disabled={deleteMediaMutation.isPending}
-                        className="flex items-center gap-2 bg-white text-red-600 px-6 py-3 rounded-full font-bold hover:bg-red-50 transition-all shadow-xl hover:scale-105"
-                    >
-                        {deleteMediaMutation.isPending ? <Loader2 className="animate-spin h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                        className="bg-red-500/20 text-red-400 px-6 py-2 rounded-full text-sm font-medium hover:bg-red-500/30 transition-colors border border-red-500/20"
+                     >
                         {t('delete')}
-                    </button>
-                )}
-             </div>
-          </div>
-        </div>
+                     </button>
+                  )}
+               </div>
+            </div>
+         </div>
       )}
     </div>
   );

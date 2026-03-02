@@ -80,7 +80,7 @@ export default function MemoryGrid({ memories, isLoading, onDelete }: MemoryGrid
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
-        <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
+        <Loader2 className="animate-spin h-8 w-8 text-primary" />
       </div>
     );
   }
@@ -102,22 +102,20 @@ export default function MemoryGrid({ memories, isLoading, onDelete }: MemoryGrid
           actionLink={filters.search || filters.visibility !== 'all' ? undefined : "/app/memories/new"}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <div className="columns-1 md:columns-2 lg:columns-3 xl:columns-4 gap-6 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
           {filteredMemories.map((memory, index) => (
-            <MemoryCard 
-              key={memory.id} 
-              memory={memory} 
-              index={index}
-              onDelete={onDelete}
-              onFavorite={toggleFavorite}
-              isFavorite={favorites.includes(memory.id)}
-              onShare={() => {
-                // This could open a share modal or navigate to detail
-                // Ideally use a proper router link or modal, but for now simple navigation or the card's internal link works
-                // The card itself wraps content in a Link, so this is for the quick action button
-                window.location.href = `/app/memories/${memory.id}`;
-              }}
-            />
+            <div key={memory.id} className="break-inside-avoid mb-6">
+                <MemoryCard 
+                  memory={memory} 
+                  index={index}
+                  onDelete={onDelete}
+                  onFavorite={toggleFavorite}
+                  isFavorite={favorites.includes(memory.id)}
+                  onShare={() => {
+                    window.location.href = `/app/memories/${memory.id}`;
+                  }}
+                />
+            </div>
           ))}
         </div>
       )}

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, MapPin, Calendar, Lock, Globe, Share2, Trash2, Users, ArrowRight } from 'lucide-react';
-import { getSeasonColor, getMoodColor } from '@/utils/visuals';
+import { Heart, MapPin, Calendar, Lock, Globe, Share2, Trash2, Users, MoreHorizontal } from 'lucide-react';
 import { useLanguageStore } from '@/store/language';
 
 interface Memory {
@@ -21,145 +20,95 @@ interface MemoryCardProps {
   onShare?: (memory: Memory) => void;
   onFavorite?: (id: string) => void;
   isFavorite?: boolean;
-  index?: number; // Added for animation delay
+  index?: number; 
 }
 
 export default function MemoryCard({ memory, onDelete, onShare, onFavorite, isFavorite, index = 0 }: MemoryCardProps) {
-  const [isHovered, setIsHovered] = useState(false);
   const { t } = useLanguageStore();
-  
-  const seasonGradient = getSeasonColor(memory.created_at);
-  const moodBorder = getMoodColor(memory.content); // Kept for logic but used subtly
-
   const hasMedia = memory.memory_media && memory.memory_media.length > 0;
   const coverImage = hasMedia ? memory.memory_media![0].file_url : null;
-
-  // Stagger animation delay based on index
-  const animationDelay = `${index * 100}ms`;
+  const animationDelay = `${index * 50}ms`;
 
   return (
     <div 
-      className="group relative flex flex-col bg-white rounded-2xl overflow-hidden border border-gray-100 transition-all duration-300 hover:shadow-lg"
+      className="group relative flex flex-col break-inside-avoid mb-6"
       style={{ animationDelay }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
-      <Link to={`/app/memories/${memory.id}`} className="flex-1 flex flex-col h-full">
-        {/* Image / Header Section */}
-        <div className={`relative aspect-[4/3] w-full overflow-hidden ${coverImage ? 'bg-gray-100' : 'bg-gray-50'}`}>
+      <Link to={`/app/memories/${memory.id}`} className="block relative rounded-2xl overflow-hidden bg-secondary/20">
+        {/* Image Area */}
+        <div className="relative aspect-[3/4] w-full overflow-hidden">
           {coverImage ? (
             <img 
               src={coverImage} 
               alt={memory.title} 
-              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center">
-              <div className="bg-gray-100 p-3 rounded-full mb-3">
-                 <Calendar className="w-6 h-6 text-gray-400" />
-              </div>
-              <span className="text-gray-500 font-medium text-sm">
-                 {new Date(memory.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-              </span>
+            <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-secondary/10">
+              <Calendar className="w-8 h-8 text-muted-foreground/30 mb-2" />
             </div>
           )}
           
-          {/* Status Badge */}
-          <div className="absolute top-3 left-3">
-             <div className="bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-md text-[10px] font-semibold text-gray-600 shadow-sm border border-gray-100 flex items-center gap-1.5">
-                {memory.status === 'private' && <Lock className="w-3 h-3 text-gray-400" />}
-                {memory.status === 'public_link' && <Globe className="w-3 h-3 text-blue-400" />}
-                {memory.status === 'circle' && <Users className="w-3 h-3 text-purple-400" />}
-                <span className="uppercase tracking-wide">{t(memory.status as any)}</span>
+          {/* Gradient Overlay on Hover */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+          
+          {/* Top Right Status Icon */}
+          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+             <div className="bg-black/20 backdrop-blur-md p-1.5 rounded-full text-white/90">
+                {memory.status === 'private' && <Lock className="w-3.5 h-3.5" />}
+                {memory.status === 'public_link' && <Globe className="w-3.5 h-3.5" />}
+                {memory.status === 'circle' && <Users className="w-3.5 h-3.5" />}
+             </div>
+          </div>
+
+          {/* Bottom Info on Hover */}
+          <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-300">
+             <div className="flex items-center justify-between text-white/90">
+                <span className="text-xs font-medium bg-black/20 backdrop-blur-md px-2 py-1 rounded-md">
+                   {new Date(memory.created_at).toLocaleDateString()}
+                </span>
+                
+                <div className="flex gap-2">
+                   <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onFavorite && onFavorite(memory.id);
+                    }}
+                    className={`p-1.5 rounded-full transition-colors bg-black/20 backdrop-blur-md hover:bg-white hover:text-black ${isFavorite ? 'text-red-500 bg-white' : 'text-white'}`}
+                  >
+                    <Heart className="w-3.5 h-3.5" fill={isFavorite ? "currentColor" : "none"} />
+                  </button>
+                  {onDelete && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onDelete(memory.id);
+                      }}
+                      className="p-1.5 rounded-full transition-colors bg-black/20 backdrop-blur-md hover:bg-red-500 hover:text-white text-white"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
              </div>
           </div>
         </div>
-
-        {/* Content Section */}
-        <div className="p-5 flex flex-col flex-1 relative">
-           <div className="mb-2">
-              <time className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-                 {new Date(memory.created_at).getFullYear()}
-              </time>
-           </div>
-
-           <h3 className="font-sans text-lg font-bold text-gray-900 mb-2 line-clamp-1 group-hover:text-black transition-colors">
-             {memory.title}
-           </h3>
-           
-           <p className="text-gray-500 text-sm line-clamp-2 mb-4 leading-relaxed flex-1">
-             {memory.content}
-           </p>
-
-           {/* Tags */}
-           {memory.memory_tags && memory.memory_tags.length > 0 && (
-             <div className="flex flex-wrap gap-1.5 mb-4">
-               {memory.memory_tags.slice(0, 3).map((tagObj: any, idx: number) => (
-                 <span key={idx} className="text-[10px] font-medium text-gray-500 bg-gray-100 px-2 py-0.5 rounded-md">
-                   #{tagObj.tags.name}
-                 </span>
-               ))}
-             </div>
-           )}
-
-           {/* Footer Actions */}
-           <div className="flex items-center justify-between mt-auto pt-4 border-t border-gray-100/50">
-              <div className="flex items-center text-gray-400 text-xs font-medium">
-                 {memory.location ? (
-                   <div className="flex items-center gap-1.5 max-w-[140px]">
-                     <MapPin className="w-3.5 h-3.5 flex-shrink-0 text-gray-300" />
-                     <span className="truncate">{memory.location}</span>
-                   </div>
-                 ) : (
-                    <span className="opacity-0">No location</span>
-                 )}
-              </div>
-
-              <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-300 translate-y-2 sm:group-hover:translate-y-0 transform">
-                 <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onFavorite && onFavorite(memory.id);
-                  }}
-                  className={`p-2 rounded-full transition-all ${isFavorite ? 'text-pink-500 bg-pink-50' : 'text-gray-400 hover:text-pink-500 hover:bg-pink-50'}`}
-                  title="Favorite"
-                >
-                  <Heart className="w-4 h-4" fill={isFavorite ? "currentColor" : "none"} />
-                </button>
-                
-                <button
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    onShare && onShare(memory);
-                  }}
-                  className="p-2 rounded-full text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all"
-                  title={t('share_link')}
-                >
-                  <Share2 className="w-4 h-4" />
-                </button>
-              </div>
-           </div>
-        </div>
       </Link>
-      
-      {/* Delete Button (Absolute positioned) */}
-      {onDelete && (
-        <button
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            if (confirm('Are you sure you want to delete this memory?')) {
-              onDelete(memory.id);
-            }
-          }}
-          className="absolute top-4 right-4 p-2 bg-white/90 backdrop-blur-md text-gray-400 hover:text-red-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-300 hover:bg-red-50 translate-x-4 group-hover:translate-x-0"
-          title={t('delete')}
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
+
+      {/* Minimal Title Below */}
+      <div className="mt-3 px-1">
+        <h3 className="font-bold text-base leading-tight text-foreground group-hover:text-primary transition-colors">
+          {memory.title}
+        </h3>
+        {memory.location && (
+           <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+              <MapPin className="w-3 h-3" /> {memory.location}
+           </p>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Plus, Sparkles, Image as ImageIcon, Heart, Share2 } from 'lucide-react';
+import { Loader2, Plus, Sparkles, Image as ImageIcon, Heart, Share2, Layers, Grid } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '@/store/auth';
 import { useLanguageStore } from '@/store/language';
@@ -36,7 +36,7 @@ export default function Dashboard() {
               name
             )
           ),
-          memory_media (
+          memory_media:memory_media!memory_media_memory_id_fkey (
             file_url,
             file_type
           )
@@ -71,15 +71,15 @@ export default function Dashboard() {
 
   if (error) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="bg-red-50 p-4 rounded-full mb-4">
-            <Sparkles className="h-8 w-8 text-red-400" />
+      <div className="flex flex-col items-center justify-center py-32 text-center animate-in fade-in duration-500">
+        <div className="bg-destructive/5 p-6 rounded-3xl mb-6 border border-destructive/10">
+            <Sparkles className="h-10 w-10 text-destructive" />
         </div>
-        <h3 className="text-lg font-medium text-gray-900">Oops, something went wrong</h3>
-        <p className="text-gray-500 max-w-md mt-2">{(error as any).message}</p>
+        <h3 className="text-2xl font-bold text-foreground tracking-tight">Something went wrong</h3>
+        <p className="text-muted-foreground max-w-md mt-2 mb-8">{(error as any).message}</p>
         <button 
             onClick={() => queryClient.invalidateQueries({ queryKey: ['memories'] })}
-            className="mt-6 text-indigo-600 font-medium hover:text-indigo-800"
+            className="px-6 py-2 rounded-full bg-foreground text-background font-bold hover:opacity-90 transition-opacity"
         >
             Try Again
         </button>
@@ -88,41 +88,44 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="space-y-8 pb-20">
-      {/* Minimal Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 pt-8 pb-6">
-        <div>
-           <h1 className="text-4xl font-extrabold text-gray-900 tracking-tight">
+    <div className="space-y-12 pb-32 max-w-7xl mx-auto px-4 sm:px-6">
+      {/* Modern Minimal Header */}
+      <div className="flex flex-col md:flex-row justify-between items-end gap-12 pt-12 pb-8 border-b border-border/20">
+        <div className="space-y-4">
+           <h1 className="text-6xl md:text-8xl font-black text-foreground tracking-tighter leading-none">
              {t('dashboard_title')}
            </h1>
-           <p className="text-gray-500 mt-2 text-lg">
+           <p className="text-muted-foreground text-xl font-light tracking-wide">
              {t('dashboard_subtitle')}
            </p>
         </div>
 
-        <div className="flex items-center gap-4">
-            {/* Simple Stats Pills */}
-            <div className="hidden md:flex items-center gap-3 mr-4">
-                <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
-                    {stats.total} Memories
-                </div>
-                <div className="px-3 py-1 bg-gray-100 rounded-full text-xs font-medium text-gray-600">
-                    {stats.photos} Photos
-                </div>
-            </div>
-
+        <div className="flex flex-col items-end gap-6">
             <Link
                 to="/app/memories/new"
-                className="inline-flex items-center justify-center px-5 py-2.5 text-sm font-semibold text-white transition-all bg-black rounded-full hover:bg-gray-800 hover:scale-105 active:scale-95 shadow-sm"
+                className="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-background bg-foreground rounded-full hover:opacity-90 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 group"
             >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform" />
                 {t('dashboard_create')}
             </Link>
+            
+            {/* Stats Pills - Minimalist */}
+            <div className="hidden md:flex items-center gap-3">
+                <div className="px-4 py-1.5 bg-secondary/30 rounded-full border border-border/30 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {stats.total} Memories
+                </div>
+                <div className="px-4 py-1.5 bg-secondary/30 rounded-full border border-border/30 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {stats.photos} Photos
+                </div>
+                <div className="px-4 py-1.5 bg-secondary/30 rounded-full border border-border/30 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {stats.shared} Shared
+                </div>
+            </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="relative">
+      <div className="relative animate-in fade-in slide-in-from-bottom-8 duration-700">
          <MemoryGrid 
             memories={memories || []} 
             isLoading={isLoading} 
