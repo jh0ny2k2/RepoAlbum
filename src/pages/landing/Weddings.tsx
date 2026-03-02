@@ -49,7 +49,7 @@ export default function Weddings() {
                 {t('wedding_cta_create')}
                 <ArrowRight className="w-5 h-5 ml-2" />
               </Link>
-              <Link to="#demo" className="inline-flex items-center justify-center px-8 py-4 bg-white text-gray-900 border border-gray-200 rounded-full font-medium text-lg hover:bg-gray-50 transition-all">
+              <Link to="/demo" className="inline-flex items-center justify-center px-8 py-4 bg-white text-gray-900 border border-gray-200 rounded-full font-medium text-lg hover:bg-gray-50 transition-all">
                 {t('wedding_cta_demo')}
               </Link>
             </div>

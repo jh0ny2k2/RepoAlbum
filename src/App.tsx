@@ -17,6 +17,7 @@ const MemoryDetail = lazy(() => import("@/pages/MemoryDetail"));
 const PublicMemory = lazy(() => import("@/pages/PublicMemory"));
 const Home = lazy(() => import("@/pages/Home"));
 const Weddings = lazy(() => import("@/pages/landing/Weddings"));
+const Demo = lazy(() => import("@/pages/landing/Demo"));
 
 // Configure QueryClient with better defaults to avoid loops
 const queryClient = new QueryClient({
@@ -50,6 +51,7 @@ export default function App() {
             {/* Public Routes */}
             <Route path="/" element={<Home />} />
             <Route path="/weddings" element={<Weddings />} />
+            <Route path="/demo" element={<Demo />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
             <Route path="/share/:token" element={<PublicMemory />} />

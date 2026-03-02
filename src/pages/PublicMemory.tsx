@@ -23,6 +23,8 @@ export default function PublicMemory() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState<{date: string, media: any[]} | null>(null);
 
+  const [showViralModal, setShowViralModal] = useState(false);
+
   // Comments State
   const [commentForm, setCommentForm] = useState({ name: '', content: '' });
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
@@ -210,7 +212,7 @@ export default function PublicMemory() {
         if (rpcError) throw rpcError;
 
         await queryClient.invalidateQueries({ queryKey: ['shared_memory', token] });
-        alert("Photo uploaded successfully!");
+        setShowViralModal(true); // Show Viral Loop Modal instead of alert
     } catch (error: any) { console.error("Guest upload failed:", error); alert(`Upload failed: ${error.message}`); } 
     finally { setIsUploading(false); e.target.value = ''; }
   };
@@ -354,6 +356,35 @@ export default function PublicMemory() {
                     <p className="text-lg md:text-xl text-white/90 font-light leading-relaxed line-clamp-3">
                         {memory.content}
                     </p>
+                    
+                    {/* Social Share Buttons */}
+                    <div className="flex gap-2 mt-6">
+                        <button 
+                            onClick={() => {
+                                if (navigator.share) {
+                                    navigator.share({
+                                        title: memory.title,
+                                        text: `Check out this memory: ${memory.title}`,
+                                        url: window.location.href
+                                    });
+                                } else {
+                                    navigator.clipboard.writeText(window.location.href);
+                                    alert('Link copied to clipboard!');
+                                }
+                            }}
+                            className="bg-white text-black px-4 py-2 rounded-full text-sm font-bold hover:bg-white/90 transition-colors flex items-center gap-2"
+                        >
+                            <Share2 className="w-4 h-4" /> Share Album
+                        </button>
+                        <a 
+                            href={`https://wa.me/?text=${encodeURIComponent(`Check out this memory: ${memory.title} ${window.location.href}`)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-[#25D366] text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-[#25D366]/90 transition-colors flex items-center gap-2"
+                        >
+                            WhatsApp
+                        </a>
+                    </div>
                  </div>
               </div>
           </div>
@@ -534,6 +565,53 @@ export default function PublicMemory() {
             </form>
         </div>
       )}
+
+      {/* Viral Loop Modal */}
+      <AnimatePresence>
+      {showViralModal && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setShowViralModal(false)}>
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="bg-white text-black p-8 rounded-3xl max-w-sm w-full text-center relative overflow-hidden" 
+                onClick={e => e.stopPropagation()}
+            >
+                {/* Confetti Background Effect (CSS only) */}
+                <div className="absolute inset-0 pointer-events-none opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-yellow-200 via-red-200 to-pink-200" />
+                
+                <div className="relative z-10">
+                    <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <Sparkles className="w-8 h-8 fill-current" />
+                    </div>
+                    
+                    <h3 className="text-2xl font-black mb-2">Photos Uploaded! 📸</h3>
+                    <p className="text-gray-500 mb-8 leading-relaxed">
+                        Thanks for capturing the moment. The host will love them!
+                    </p>
+
+                    <div className="bg-gray-50 rounded-2xl p-6 mb-8 border border-gray-100">
+                        <p className="font-bold text-sm mb-2">Planning your own event?</p>
+                        <p className="text-xs text-gray-500 mb-4">Create a private album like this one for free. No app required for guests.</p>
+                        <Link 
+                            to="/signup" 
+                            className="block w-full py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all transform hover:scale-[1.02] shadow-xl"
+                        >
+                            Create Free Album
+                        </Link>
+                    </div>
+
+                    <button 
+                        onClick={() => setShowViralModal(false)}
+                        className="text-gray-400 text-sm font-medium hover:text-gray-600"
+                    >
+                        Close
+                    </button>
+                </div>
+            </motion.div>
+        </div>
+      )}
+      </AnimatePresence>
 
       {/* Lightbox */}
       <AnimatePresence>
