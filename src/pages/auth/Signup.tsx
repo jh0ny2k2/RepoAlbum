@@ -37,6 +37,29 @@ export default function Signup() {
     }
 
     if (authData.user) {
+      // Send Welcome Email
+      try {
+        await fetch('https://maoxewgqbagqglqckluw.supabase.co/functions/v1/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to: email,
+                subject: 'Welcome to Lumina! ✨',
+                html: `
+                  <div style="font-family: sans-serif; text-align: center; color: #333;">
+                    <h1 style="color: #333;">Welcome, ${fullName || username}!</h1>
+                    <p>Thanks for joining Lumina. Your private space for memories is ready.</p>
+                    <p>Start by creating your first album or exploring the demo.</p>
+                    <br/>
+                    <a href="https://luminamemories.netlify.app/app" style="background: #000; color: white; padding: 12px 24px; text-decoration: none; border-radius: 99px; font-weight: bold;">Go to Dashboard</a>
+                  </div>
+                `
+            })
+        });
+      } catch (err) {
+        console.error("Failed to send welcome email", err);
+      }
+
       navigate('/app');
     }
     setLoading(false);

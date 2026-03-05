@@ -62,13 +62,25 @@ export default function Dashboard() {
 
   // Derived stats
   const stats = useMemo(() => {
-    if (!memories) return { total: 0, favorites: 0, shared: 0 };
+    if (!memories) return { total: 0, favorites: 0, shared: 0, photos: 0 };
     return {
       total: memories.length,
       shared: memories.filter(m => m.status !== 'private').length,
       photos: memories.reduce((acc, m) => acc + (m.memory_media?.length || 0), 0)
     };
   }, [memories]);
+
+  const { data: profile } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('plan_tier').eq('id', user?.id).single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const isFreePlan = profile?.plan_tier !== 'pro';
+  const hasReachedLimit = isFreePlan && stats.total >= 1; // 1 Album Limit for Free
 
   if (error) {
     return (
@@ -97,22 +109,46 @@ export default function Dashboard() {
       {/* Modern Minimal Header */}
       <div className="flex flex-col md:flex-row justify-between items-end gap-12 pt-12 pb-8 border-b border-border/20">
         <div className="space-y-4">
-           <h1 className="text-6xl md:text-8xl font-black text-foreground tracking-tighter leading-none">
-             {t('dashboard_title')}
-           </h1>
+           <div className="flex items-center gap-4">
+             <h1 className="text-6xl md:text-8xl font-black text-foreground tracking-tighter leading-none">
+               {t('dashboard_title')}
+             </h1>
+             {!isFreePlan ? (
+                <div className="hidden md:flex px-3 py-1 rounded-full bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 text-yellow-900 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 border border-yellow-300 animate-in fade-in zoom-in duration-500">
+                    Pro Member
+                </div>
+             ) : (
+                <div className="hidden md:flex px-3 py-1 rounded-full bg-secondary text-muted-foreground text-[10px] font-bold uppercase tracking-widest border border-border">
+                    Free Plan
+                </div>
+             )}
+           </div>
            <p className="text-muted-foreground text-xl font-light tracking-wide">
              {t('dashboard_subtitle')}
            </p>
         </div>
 
         <div className="flex flex-col items-end gap-6">
-            <Link
-                to="/app/memories/new"
-                className="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-background bg-foreground rounded-full hover:opacity-90 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 group"
-            >
-                <Plus className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform" />
-                {t('dashboard_create')}
-            </Link>
+            {hasReachedLimit ? (
+                <div className="flex flex-col items-end gap-2">
+                    <Link
+                        to="/pricing"
+                        className="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-white bg-rose-500 rounded-full hover:bg-rose-600 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 group animate-pulse"
+                    >
+                        <Sparkles className="w-5 h-5 mr-2" />
+                        Upgrade to Create More
+                    </Link>
+                    <p className="text-xs text-muted-foreground">Free plan limit reached (1/1 Album)</p>
+                </div>
+            ) : (
+                <Link
+                    to="/app/memories/new"
+                    className="inline-flex items-center justify-center px-8 py-4 text-base font-bold text-background bg-foreground rounded-full hover:opacity-90 transition-all shadow-xl hover:shadow-2xl hover:-translate-y-1 group"
+                >
+                    <Plus className="w-5 h-5 mr-2 group-hover:rotate-90 transition-transform" />
+                    {t('dashboard_create')}
+                </Link>
+            )}
             
             {/* Stats Pills - Minimalist */}
             <div className="hidden md:flex items-center gap-3">

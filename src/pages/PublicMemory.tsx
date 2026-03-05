@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
-import { Loader2, Calendar as CalendarIcon, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send, LayoutGrid, List, ChevronLeft, ChevronRight, Calendar, Grid, Sparkles, Share2 } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, MapPin, Tag, Image as ImageIcon, Folder, Upload, Globe, ArrowLeft, X, Download, Play, MessageSquare, Send, LayoutGrid, List, ChevronLeft, ChevronRight, Calendar, Grid, Sparkles, Share2, Monitor } from 'lucide-react';
 import { useLanguageStore } from '@/store/language';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
@@ -24,6 +24,9 @@ export default function PublicMemory() {
   const [selectedDay, setSelectedDay] = useState<{date: string, media: any[]} | null>(null);
 
   const [showViralModal, setShowViralModal] = useState(false);
+  
+  // Slideshow State
+  const [isSlideshowActive, setIsSlideshowActive] = useState(false);
 
   // Comments State
   const [commentForm, setCommentForm] = useState({ name: '', content: '' });
@@ -44,6 +47,33 @@ export default function PublicMemory() {
     },
     enabled: !!token,
   });
+
+  // Real-time Updates
+  useEffect(() => {
+    if (!sharedData?.memory?.id) return;
+
+    const channel = supabase
+      .channel(`memory_live_${sharedData.memory.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'memories_media',
+          filter: `memory_id=eq.${sharedData.memory.id}`,
+        },
+        (payload) => {
+          console.log('New media received!', payload);
+          queryClient.invalidateQueries({ queryKey: ['shared_memory', token] });
+          // Optional: Show a toast or small notification
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [sharedData?.memory?.id, queryClient, token]);
 
   const { data: comments, refetch: refetchComments } = useQuery({
     queryKey: ['comments', token],
@@ -68,6 +98,27 @@ export default function PublicMemory() {
     if (activeSectionId) return m.section_id === activeSectionId;
     return !m.section_id;
   });
+
+  // Slideshow Effect
+  useEffect(() => {
+    let interval: any;
+    if (isSlideshowActive && currentMedia && currentMedia.length > 0) {
+      // If no media is selected, start with the first one
+      if (!selectedMedia) {
+        setSelectedMedia(currentMedia[0]);
+      }
+
+      interval = setInterval(() => {
+        setSelectedMedia((prev: any) => {
+           if (!prev) return currentMedia[0];
+           const currentIndex = currentMedia.findIndex((m: any) => m.id === prev.id);
+           const nextIndex = (currentIndex + 1) % currentMedia.length;
+           return currentMedia[nextIndex];
+        });
+      }, 5000); // 5 seconds per slide
+    }
+    return () => clearInterval(interval);
+  }, [isSlideshowActive, currentMedia, selectedMedia]);
 
   // Determine Cover Image
   const coverImage = useMemo(() => {
@@ -376,6 +427,12 @@ export default function PublicMemory() {
                         >
                             <Share2 className="w-4 h-4" /> Share Album
                         </button>
+                        <button 
+                            onClick={() => setIsSlideshowActive(true)}
+                            className="bg-black/50 backdrop-blur-md text-white px-4 py-2 rounded-full text-sm font-bold hover:bg-black/70 transition-colors flex items-center gap-2 border border-white/20"
+                        >
+                            <Monitor className="w-4 h-4" /> Slideshow
+                        </button>
                         <a 
                             href={`https://wa.me/?text=${encodeURIComponent(`Check out this memory: ${memory.title} ${window.location.href}`)}`}
                             target="_blank"
@@ -613,30 +670,45 @@ export default function PublicMemory() {
       )}
       </AnimatePresence>
 
-      {/* Lightbox */}
+      {/* Lightbox & Slideshow */}
       <AnimatePresence>
-      {selectedMedia && (
+      {(selectedMedia || isSlideshowActive) && (
         <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-4" 
-            onClick={() => setSelectedMedia(null)}
+            onClick={() => {
+                setSelectedMedia(null);
+                setIsSlideshowActive(false);
+            }}
         >
-            <button 
-               className="fixed top-6 right-6 z-[60] p-3 bg-white text-black rounded-full hover:bg-gray-200 transition-all shadow-xl" 
-               onClick={(e) => { e.stopPropagation(); setSelectedMedia(null); }}
-            >
-               <X className="w-6 h-6" />
-            </button>
+            <div className="absolute top-6 right-6 z-[60] flex items-center gap-4">
+                {isSlideshowActive && (
+                    <div className="bg-red-500/20 text-red-500 px-3 py-1 rounded-full text-xs font-bold animate-pulse border border-red-500/50">
+                        LIVE SLIDESHOW
+                    </div>
+                )}
+                <button 
+                className="p-3 bg-white text-black rounded-full hover:bg-gray-200 transition-all shadow-xl" 
+                onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setSelectedMedia(null);
+                    setIsSlideshowActive(false);
+                }}
+                >
+                <X className="w-6 h-6" />
+                </button>
+            </div>
             
             <motion.div 
                className="relative max-w-7xl max-h-screen w-full h-full flex flex-col items-center justify-center" 
                onClick={e => e.stopPropagation()}
-               drag
+               drag={!isSlideshowActive} // Disable drag in slideshow mode to prevent accidental swipes
                dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
                dragElastic={0.8}
                onDragEnd={(e, { offset, velocity }) => {
+                   if (isSlideshowActive) return;
                    const swipe = offset.x;
                    const verticalSwipe = offset.y;
 
@@ -654,48 +726,57 @@ export default function PublicMemory() {
                    }
                }}
             >
-               {selectedMedia.file_type === 'video' ? (
+               {selectedMedia?.file_type === 'video' ? (
                    <video 
                      src={selectedMedia.file_url} 
-                     controls 
+                     controls={!isSlideshowActive}
                      autoPlay 
+                     muted={isSlideshowActive} // Mute video in slideshow to avoid chaos
+                     onEnded={() => {
+                         if (isSlideshowActive) handleNextMedia();
+                     }}
                      className="max-w-full max-h-[85vh] rounded-lg shadow-2xl pointer-events-auto" 
                    />
                ) : (
                    <motion.img 
-                     key={selectedMedia.id}
+                     key={selectedMedia?.id}
                      initial={{ opacity: 0, scale: 0.95 }}
                      animate={{ opacity: 1, scale: 1 }}
-                     transition={{ duration: 0.2 }}
-                     src={selectedMedia.file_url} 
+                     transition={{ duration: 0.5 }}
+                     src={selectedMedia?.file_url} 
                      className="max-w-full max-h-[85vh] object-contain shadow-2xl rounded-sm pointer-events-none select-none" 
                    />
                )}
                
-               <div className="absolute bottom-8 flex gap-4 pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
-                  <button 
-                     onClick={() => handleDownload(selectedMedia.file_url, `photo-${selectedMedia.id}.jpg`)}
-                     className="bg-white text-black px-6 py-2 rounded-full text-sm font-bold hover:bg-white/90 transition-colors flex items-center gap-2"
-                  >
-                     <Download className="w-4 h-4" /> {t('download')}
-                  </button>
-               </div>
+               {!isSlideshowActive && (
+                <div className="absolute bottom-8 flex gap-4 pointer-events-auto" onPointerDown={(e) => e.stopPropagation()}>
+                    <button 
+                        onClick={() => handleDownload(selectedMedia.file_url, `photo-${selectedMedia.id}.jpg`)}
+                        className="bg-white text-black px-6 py-2 rounded-full text-sm font-bold hover:bg-white/90 transition-colors flex items-center gap-2"
+                    >
+                        <Download className="w-4 h-4" /> {t('download')}
+                    </button>
+                </div>
+               )}
             </motion.div>
 
              {/* Navigation Arrows */}
-             <button 
-                 className="fixed left-4 top-1/2 -translate-y-1/2 p-4 text-white/50 hover:text-white transition-colors z-[60] hidden md:block"
-                 onClick={(e) => { e.stopPropagation(); handlePrevMedia(); }}
-             >
-                 <ChevronLeft className="w-8 h-8" />
-             </button>
-             <button 
-                 className="fixed right-4 top-1/2 -translate-y-1/2 p-4 text-white/50 hover:text-white transition-colors z-[60] hidden md:block"
-                 onClick={(e) => { e.stopPropagation(); handleNextMedia(); }}
-             >
-                 <ChevronRight className="w-8 h-8" />
-             </button>
-
+             {!isSlideshowActive && (
+                 <>
+                    <button 
+                        className="fixed left-4 top-1/2 -translate-y-1/2 p-4 text-white/50 hover:text-white transition-colors z-[60] hidden md:block"
+                        onClick={(e) => { e.stopPropagation(); handlePrevMedia(); }}
+                    >
+                        <ChevronLeft className="w-8 h-8" />
+                    </button>
+                    <button 
+                        className="fixed right-4 top-1/2 -translate-y-1/2 p-4 text-white/50 hover:text-white transition-colors z-[60] hidden md:block"
+                        onClick={(e) => { e.stopPropagation(); handleNextMedia(); }}
+                    >
+                        <ChevronRight className="w-8 h-8" />
+                    </button>
+                 </>
+             )}
          </motion.div>
       )}
       </AnimatePresence>

@@ -188,11 +188,16 @@ export default function Home() {
             <img src="/logo.png" alt="Lumina Logo" className="h-16 w-16 object-contain mb-8" />
             <h2 className="text-2xl font-bold tracking-tight mb-8">Lumina</h2>
             
-            <div className="flex gap-8 text-sm font-bold text-muted-foreground uppercase tracking-widest mb-12">
-               <a href="#" className="hover:text-foreground transition-colors">Privacy</a>
-               <a href="#" className="hover:text-foreground transition-colors">Terms</a>
-               <a href="#" className="hover:text-foreground transition-colors">Twitter</a>
-               <a href="#" className="hover:text-foreground transition-colors">GitHub</a>
+            <div className="flex gap-8 mb-12">
+               <Link to="/support" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                  {t('footer_contact')}
+               </Link>
+               <Link to="/support" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                  FAQs
+               </Link>
+               <a href="#" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                  {t('footer_privacy')}
+               </a>
             </div>
             
             <p className="text-muted-foreground/40 text-sm">

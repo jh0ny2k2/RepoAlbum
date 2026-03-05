@@ -91,6 +91,19 @@ export default function MemoryDetail() {
     enabled: !!id,
   });
 
+  const { data: profile } = useQuery({
+    queryKey: ['profile', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('profiles').select('plan_tier').eq('id', user?.id).single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  const isFreePlan = profile?.plan_tier !== 'pro';
+  const totalPhotos = memory?.memory_media?.length || 0;
+  const hasReachedPhotoLimit = isFreePlan && totalPhotos >= 50;
+
   const isOwner = user?.id === memory?.user_id;
   const activeSection = memory?.memory_sections?.find((s: any) => s.id === activeSectionId);
   
@@ -475,10 +488,10 @@ export default function MemoryDetail() {
                         </button>
                      </div>
                      {isOwner && (
-                        <label className={cn("cursor-pointer px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 shadow-lg", isUploading && "opacity-50 cursor-not-allowed", currentCoverMedia ? 'bg-white text-black hover:bg-white/90 shadow-black/20' : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20')}>
+                        <label className={cn("cursor-pointer px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 shadow-lg", (isUploading || hasReachedPhotoLimit) && "opacity-50 cursor-not-allowed", currentCoverMedia ? 'bg-white text-black hover:bg-white/90 shadow-black/20' : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20')}>
                            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                           <span className="hidden sm:inline">{t('upload_photo')}</span>
-                           <input type="file" className="hidden" accept="image/*,video/*" multiple onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={isUploading} />
+                           <span className="hidden sm:inline">{hasReachedPhotoLimit ? "Limit Reached (50/50)" : t('upload_photo')}</span>
+                           <input type="file" className="hidden" accept="image/*,video/*" multiple onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={isUploading || hasReachedPhotoLimit} />
                         </label>
                      )}
                   </>
@@ -735,10 +748,10 @@ export default function MemoryDetail() {
                     <h3 className="text-xl font-bold mb-2 text-foreground">{t('empty_album')}</h3>
                     <p className="text-muted-foreground mb-8">{t('upload_photos_msg')}</p>
                     {isOwner && (
-                       <label className="bg-primary text-primary-foreground px-8 py-3 rounded-full font-bold cursor-pointer hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center gap-2">
+                       <label className={cn("bg-primary text-primary-foreground px-8 py-3 rounded-full font-bold cursor-pointer hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 flex items-center gap-2", hasReachedPhotoLimit && "opacity-50 pointer-events-none")}>
                           <Upload className="w-4 h-4" />
-                          {t('upload_photo')}
-                          <input type="file" className="hidden" accept="image/*,video/*" multiple onChange={(e) => handleFileUpload(e, activeSectionId)} />
+                          {hasReachedPhotoLimit ? "Upgrade to Upload More" : t('upload_photo')}
+                          <input type="file" className="hidden" accept="image/*,video/*" multiple onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={hasReachedPhotoLimit} />
                        </label>
                     )}
                  </div>

@@ -4,8 +4,11 @@ import { Heart, Camera, Share2, Shield, ArrowRight, QrCode } from 'lucide-react'
 import SEO from '@/components/SEO';
 import { useLanguageStore } from '@/store/language';
 
+import { useAuthStore } from '@/store/auth';
+
 export default function Weddings() {
   const { t, language, setLanguage } = useLanguageStore();
+  const { session } = useAuthStore();
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-rose-200">
@@ -25,8 +28,18 @@ export default function Weddings() {
                 <span className="text-gray-300">|</span>
                 <button onClick={() => setLanguage('es')} className={language === 'es' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}>ES</button>
             </div>
-            <Link to="/login" className="text-sm font-medium hover:text-rose-600 transition-colors">{t('login')}</Link>
-            <Link to="/signup" className="bg-gray-900 text-white px-6 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">{t('signup')}</Link>
+            <Link to="/pricing" className="text-sm font-medium hover:text-rose-600 transition-colors">{t('pricing')}</Link>
+            
+            {session ? (
+                <Link to="/app" className="bg-gray-900 text-white px-6 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">
+                    {t('dashboard_title')}
+                </Link>
+            ) : (
+                <>
+                    <Link to="/login" className="text-sm font-medium hover:text-rose-600 transition-colors">{t('login')}</Link>
+                    <Link to="/signup" className="bg-gray-900 text-white px-6 py-2.5 rounded-full text-sm font-medium hover:bg-gray-800 transition-colors">{t('signup')}</Link>
+                </>
+            )}
           </div>
         </div>
       </nav>
