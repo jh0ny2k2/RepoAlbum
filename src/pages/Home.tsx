@@ -1,15 +1,21 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Camera, Shield, Share2, FolderHeart, Zap, Globe, Heart, ArrowRight, Star, Aperture, Lock } from 'lucide-react';
+import { Camera, Shield, Share2, FolderHeart, Zap, Globe, Heart, ArrowRight, Star, Aperture, Lock, Menu, X } from 'lucide-react';
 import { useLanguageStore } from '@/store/language';
 import { useAuthStore } from '@/store/auth';
+import SEO from '@/components/SEO';
 
 export default function Home() {
   const { t, language, setLanguage } = useLanguageStore();
   const { session } = useAuthStore();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
     <div className="bg-background min-h-screen font-sans selection:bg-primary selection:text-primary-foreground overflow-x-hidden">
+      <SEO 
+        title={t('hero_title_1') + " " + t('hero_title_2')}
+        description={t('hero_subtitle')}
+      />
       {/* Navbar - Kept similar but maybe slightly different glass effect */}
       <nav className="fixed w-full z-50 bg-background/80 backdrop-blur-xl border-b border-border/50 transition-all duration-300">
         <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -19,9 +25,10 @@ export default function Home() {
               <span className="text-xl font-bold tracking-tighter text-foreground">Lumina</span>
             </div>
             
-            <div className="flex items-center gap-8">
+            {/* Desktop Menu */}
+            <div className="hidden md:flex items-center gap-8">
                {/* Language - Minimalist */}
-              <div className="flex items-center gap-2 text-xs font-bold tracking-widest hidden sm:flex bg-secondary/50 p-1 rounded-full border border-border">
+              <div className="flex items-center gap-2 text-xs font-bold tracking-widest bg-secondary/50 p-1 rounded-full border border-border">
                 <button 
                   onClick={() => setLanguage('en')}
                   className={`px-3 py-1.5 rounded-full transition-all duration-300 ${language === 'en' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
@@ -36,6 +43,10 @@ export default function Home() {
                 </button>
               </div>
 
+              <Link to="/pricing" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+                {t('pricing')}
+              </Link>
+
               {session ? (
                 <Link
                   to="/app"
@@ -45,7 +56,7 @@ export default function Home() {
                 </Link>
               ) : (
                 <div className="flex items-center gap-4">
-                  <Link to="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors hidden sm:block">
+                  <Link to="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
                     {t('login')}
                   </Link>
                   <Link
@@ -57,8 +68,46 @@ export default function Home() {
                 </div>
               )}
             </div>
+
+            {/* Mobile Menu Button */}
+            <button 
+              className="md:hidden p-2 text-muted-foreground hover:text-foreground"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+            >
+              {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
           </div>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {isMenuOpen && (
+          <div className="md:hidden absolute top-20 left-0 w-full bg-background border-b border-border p-6 flex flex-col gap-6 animate-in slide-in-from-top-5">
+             <div className="flex items-center justify-center gap-4 text-sm font-bold tracking-widest bg-secondary/30 p-2 rounded-xl">
+                <button onClick={() => setLanguage('en')} className={language === 'en' ? 'text-primary' : 'text-muted-foreground'}>English</button>
+                <span className="text-border">|</span>
+                <button onClick={() => setLanguage('es')} className={language === 'es' ? 'text-primary' : 'text-muted-foreground'}>Español</button>
+             </div>
+             
+             <Link to="/pricing" className="text-lg font-medium text-center py-2 hover:bg-secondary/50 rounded-lg transition-colors">
+                {t('pricing')}
+             </Link>
+
+             {session ? (
+                <Link to="/app" className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold text-center">
+                   {t('dashboard_title')}
+                </Link>
+             ) : (
+                <div className="flex flex-col gap-3">
+                   <Link to="/login" className="w-full border border-border py-3 rounded-xl font-bold text-center hover:bg-secondary/50">
+                      {t('login')}
+                   </Link>
+                   <Link to="/signup" className="w-full bg-primary text-primary-foreground py-3 rounded-xl font-bold text-center">
+                      {t('signup')}
+                   </Link>
+                </div>
+             )}
+          </div>
+        )}
       </nav>
 
       {/* Hero Section - Asymmetric Split */}

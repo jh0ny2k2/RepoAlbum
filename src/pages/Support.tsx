@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { useLanguageStore } from '@/store/language';
-import { ChevronDown, ChevronUp, Send, MessageCircle, BookOpen, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Send, MessageCircle, BookOpen, Loader2, Menu, X } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { Link } from 'react-router-dom';
 
 export default function Support() {
   const { t, language, setLanguage } = useLanguageStore();
   const [openFaq, setOpenFaq] = useState<number | null>(null);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   // Contact Form State
   const [form, setForm] = useState({ name: '', email: '', message: '' });
@@ -64,13 +65,18 @@ export default function Support() {
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900">
-      <SEO title="Lumina Support | Help Center" description="Get help with Lumina. FAQs and Support." />
+      <SEO 
+        title={`${t('support_title')} | Lumina Support`}
+        description={t('support_subtitle')}
+      />
 
       {/* Header */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <Link to="/" className="text-2xl font-serif font-bold tracking-tighter">Lumina</Link>
-          <div className="flex items-center gap-4">
+          
+          {/* Desktop Menu */}
+          <div className="hidden md:flex items-center gap-4">
              <div className="flex items-center gap-2 text-xs font-bold tracking-widest px-3 py-1.5 rounded-full bg-gray-100/50 border border-gray-200">
                 <button onClick={() => setLanguage('en')} className={language === 'en' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}>EN</button>
                 <span className="text-gray-300">|</span>
@@ -78,7 +84,32 @@ export default function Support() {
             </div>
              <Link to="/login" className="text-sm font-medium hover:text-rose-600 transition-colors">{t('login')}</Link>
           </div>
+
+          {/* Mobile Menu Button */}
+          <button 
+            className="md:hidden p-2 text-gray-500 hover:text-gray-900"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {isMenuOpen && (
+          <div className="md:hidden absolute top-20 left-0 w-full bg-white border-b border-gray-100 p-6 flex flex-col gap-6 animate-in slide-in-from-top-5 shadow-xl">
+             <div className="flex items-center justify-center gap-4 text-sm font-bold tracking-widest bg-gray-50 p-2 rounded-xl border border-gray-100">
+                <button onClick={() => setLanguage('en')} className={language === 'en' ? 'text-gray-900' : 'text-gray-400'}>English</button>
+                <span className="text-gray-300">|</span>
+                <button onClick={() => setLanguage('es')} className={language === 'es' ? 'text-gray-900' : 'text-gray-400'}>Español</button>
+             </div>
+             
+             <div className="flex flex-col gap-3">
+                <Link to="/login" className="w-full border border-gray-200 py-3 rounded-xl font-bold text-center hover:bg-gray-50 text-gray-700">
+                   {t('login')}
+                </Link>
+             </div>
+          </div>
+        )}
       </nav>
 
       <div className="pt-32 pb-24 px-6 max-w-4xl mx-auto">

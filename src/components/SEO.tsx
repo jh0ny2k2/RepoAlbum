@@ -17,32 +17,33 @@ interface SEOProps {
 }
 
 export default function SEO({ 
-  title = "My Memories App", 
-  description = "The ultimate platform to preserve, organize, and share your life's most precious moments securely. Create collaborative albums and keep your memories alive forever.", 
-  keywords = "memories, photo album, secure photo storage, private gallery, collaborative albums, digital memory box, share photos",
-  image = "https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&q=80&w=1200", // Default high-quality cover
+  title, 
+  description = "Lumina Memories - La forma más segura y elegante de guardar tus recuerdos. Crea álbumes privados, comparte con amigos y familia, y revive tus momentos especiales. Ideal para bodas y eventos.", 
+  keywords = "Lumina Memories, álbum de fotos online, galería privada, fotos de boda, compartir fotos, almacenamiento seguro de fotos, álbum digital, recuerdos",
+  image = "https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1200&auto=format&fit=crop", // Una imagen más evocadora (boda/evento)
   url = window.location.href,
   type = "website",
-  author = "My Memories App Team",
-  twitterHandle = "@mymemoriesapp",
+  author = "Lumina Team",
+  twitterHandle = "@luminamemories",
   publishedTime,
   modifiedTime,
   section,
   tags
 }: SEOProps) {
-  const siteTitle = "My Memories App";
-  const fullTitle = title === siteTitle ? title : `${title} | ${siteTitle}`;
+  const siteTitle = "Lumina Memories";
+  const fullTitle = title ? `${title} | ${siteTitle}` : siteTitle;
 
   // Structured Data (JSON-LD) for Google Rich Results
   const structuredData = {
     "@context": "https://schema.org",
     "@type": type === 'article' ? 'Article' : 'WebSite',
+    "name": fullTitle,
     "headline": fullTitle,
     "image": [image],
     "datePublished": publishedTime,
     "dateModified": modifiedTime,
     "author": {
-      "@type": "Person",
+      "@type": "Organization",
       "name": author
     },
     "publisher": {
@@ -50,10 +51,11 @@ export default function SEO({
       "name": siteTitle,
       "logo": {
         "@type": "ImageObject",
-        "url": "/logo.png" // Ensure you have a logo
+        "url": "https://luminamemories.netlify.app/logo.png" 
       }
     },
-    "description": description
+    "description": description,
+    "url": url
   };
 
   return (
@@ -75,7 +77,9 @@ export default function SEO({
       <meta property="og:image" content={image} />
       <meta property="og:image:width" content="1200" />
       <meta property="og:image:height" content="630" />
-      <meta property="og:locale" content="en_US" />
+      <meta property="og:locale" content="es_ES" />
+      <meta property="og:locale:alternate" content="en_US" />
+      
       {publishedTime && <meta property="article:published_time" content={publishedTime} />}
       {modifiedTime && <meta property="article:modified_time" content={modifiedTime} />}
       {section && <meta property="article:section" content={section} />}
@@ -88,7 +92,7 @@ export default function SEO({
       <meta name="twitter:title" content={fullTitle} />
       <meta name="twitter:description" content={description} />
       <meta name="twitter:image" content={image} />
-      <meta name="twitter:image:alt" content={title} />
+      <meta name="twitter:image:alt" content={title || siteTitle} />
 
       {/* Structured Data (JSON-LD) */}
       <script type="application/ld+json">

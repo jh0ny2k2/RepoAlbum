@@ -100,9 +100,18 @@ export default function MemoryDetail() {
     enabled: !!user?.id,
   });
 
-  const isFreePlan = profile?.plan_tier !== 'pro';
+  const plan = profile?.plan_tier || 'free';
   const totalPhotos = memory?.memory_media?.length || 0;
-  const hasReachedPhotoLimit = isFreePlan && totalPhotos >= 50;
+  
+  // Photo Limits Logic
+  // Free: 50
+  // Basic & Pro: 2000
+  // Unlimited: Infinity
+  let photoLimit = 50;
+  if (plan === 'basic' || plan === 'pro') photoLimit = 2000;
+  if (plan === 'unlimited') photoLimit = Infinity;
+
+  const hasReachedPhotoLimit = totalPhotos >= photoLimit;
 
   const isOwner = user?.id === memory?.user_id;
   const activeSection = memory?.memory_sections?.find((s: any) => s.id === activeSectionId);
@@ -490,7 +499,7 @@ export default function MemoryDetail() {
                      {isOwner && (
                         <label className={cn("cursor-pointer px-4 py-2 rounded-full text-sm font-bold transition-all flex items-center gap-2 shadow-lg", (isUploading || hasReachedPhotoLimit) && "opacity-50 cursor-not-allowed", currentCoverMedia ? 'bg-white text-black hover:bg-white/90 shadow-black/20' : 'bg-primary text-primary-foreground hover:bg-primary/90 shadow-primary/20')}>
                            {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                           <span className="hidden sm:inline">{hasReachedPhotoLimit ? "Limit Reached (50/50)" : t('upload_photo')}</span>
+                           <span className="hidden sm:inline">{hasReachedPhotoLimit ? `Limit Reached (${totalPhotos}/${photoLimit})` : t('upload_photo')}</span>
                            <input type="file" className="hidden" accept="image/*,video/*" multiple onChange={(e) => handleFileUpload(e, activeSectionId)} disabled={isUploading || hasReachedPhotoLimit} />
                         </label>
                      )}

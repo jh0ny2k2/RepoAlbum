@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Camera, Share2, Shield, ArrowRight, QrCode } from 'lucide-react';
+import { Heart, Camera, Share2, Shield, ArrowRight, QrCode, Menu, X } from 'lucide-react';
 import SEO from '@/components/SEO';
 import { useLanguageStore } from '@/store/language';
 
@@ -9,19 +9,24 @@ import { useAuthStore } from '@/store/auth';
 export default function Weddings() {
   const { t, language, setLanguage } = useLanguageStore();
   const { session } = useAuthStore();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-rose-200">
       <SEO 
         title={`Lumina Weddings | ${t('wedding_hero_title')} ${t('wedding_hero_title_highlight')}`}
         description={t('wedding_hero_desc')}
+        keywords="wedding photos, share wedding album, qr code photos, private event gallery, bodas, compartir fotos boda"
+        image="https://images.unsplash.com/photo-1519741497674-611481863552?q=80&w=1200&auto=format&fit=crop"
       />
 
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="text-2xl font-serif font-bold tracking-tighter">Lumina <span className="text-rose-500">Weddings</span></div>
-          <div className="flex items-center gap-4">
+          
+          {/* Desktop Menu */}
+          <div className="hidden md:flex items-center gap-4">
             {/* Language Switcher */}
             <div className="flex items-center gap-2 text-xs font-bold tracking-widest px-3 py-1.5 rounded-full bg-gray-100/50 border border-gray-200">
                 <button onClick={() => setLanguage('en')} className={language === 'en' ? 'text-gray-900' : 'text-gray-400 hover:text-gray-600'}>EN</button>
@@ -41,7 +46,45 @@ export default function Weddings() {
                 </>
             )}
           </div>
+
+          {/* Mobile Menu Button */}
+          <button 
+            className="md:hidden p-2 text-gray-500 hover:text-gray-900"
+            onClick={() => setIsMenuOpen(!isMenuOpen)}
+          >
+            {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
         </div>
+
+        {/* Mobile Menu Overlay */}
+        {isMenuOpen && (
+          <div className="md:hidden absolute top-20 left-0 w-full bg-white border-b border-gray-100 p-6 flex flex-col gap-6 animate-in slide-in-from-top-5 shadow-xl">
+             <div className="flex items-center justify-center gap-4 text-sm font-bold tracking-widest bg-gray-50 p-2 rounded-xl border border-gray-100">
+                <button onClick={() => setLanguage('en')} className={language === 'en' ? 'text-gray-900' : 'text-gray-400'}>English</button>
+                <span className="text-gray-300">|</span>
+                <button onClick={() => setLanguage('es')} className={language === 'es' ? 'text-gray-900' : 'text-gray-400'}>Español</button>
+             </div>
+             
+             <Link to="/pricing" className="text-lg font-medium text-center py-2 hover:bg-gray-50 rounded-lg transition-colors text-gray-700">
+                {t('pricing')}
+             </Link>
+
+             {session ? (
+                <Link to="/app" className="w-full bg-gray-900 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-gray-200">
+                   {t('dashboard_title')}
+                </Link>
+             ) : (
+                <div className="flex flex-col gap-3">
+                   <Link to="/login" className="w-full border border-gray-200 py-3 rounded-xl font-bold text-center hover:bg-gray-50 text-gray-700">
+                      {t('login')}
+                   </Link>
+                   <Link to="/signup" className="w-full bg-rose-500 text-white py-3 rounded-xl font-bold text-center shadow-lg shadow-rose-200">
+                      {t('signup')}
+                   </Link>
+                </div>
+             )}
+          </div>
+        )}
       </nav>
 
       {/* Hero Section */}

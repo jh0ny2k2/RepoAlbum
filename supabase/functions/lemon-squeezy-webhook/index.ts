@@ -17,7 +17,28 @@ serve(async (req) => {
     
     if (event?.meta?.event_name === 'order_created') {
       const email = event.data.attributes.user_email
-      console.log('PROCESSING PAYMENT FOR:', email)
+      // Detect Plan from Product Name
+      // The product name is usually in event.data.attributes.first_order_item.product_name
+      // But Lemon Squeezy structure can vary. Let's look for clues in the whole object or first item.
+      
+      // Simpler approach: Check total price or variant name if available
+      const total = event.data.attributes.total; // in cents
+      let plan = 'pro'; // Default fallback
+      let planName = 'Pro';
+
+      // Price matching (cents)
+      if (total === 1999) {
+          plan = 'basic';
+          planName = 'Basic';
+      } else if (total === 5099) {
+          plan = 'pro';
+          planName = 'Pro';
+      } else if (total === 9999) {
+          plan = 'unlimited';
+          planName = 'Unlimited';
+      }
+      
+      console.log(`PROCESSING PAYMENT FOR: ${email} | PLAN: ${plan} (${total} cents)`)
 
       if (!email) return new Response('No email found', { status: 400 })
 
@@ -30,7 +51,6 @@ serve(async (req) => {
       if (profile) {
           userId = profile.id;
       } else {
-          // Fallback
           const { data: { users } } = await supabase.auth.admin.listUsers()
           const authUser = users?.find(u => u.email === email)
           if (authUser) userId = authUser.id;
@@ -42,7 +62,7 @@ serve(async (req) => {
       }
 
       // Update Profile
-      await supabase.from('profiles').update({ plan_tier: 'pro' }).eq('id', userId)
+      await supabase.from('profiles').update({ plan_tier: plan }).eq('id', userId)
       console.log('SUCCESS! USER UPGRADED:', email)
 
       // SEND EMAIL NOTIFICATION
@@ -56,12 +76,12 @@ serve(async (req) => {
             body: JSON.stringify({
                 from: 'Lumina <onboarding@resend.dev>',
                 to: email,
-                subject: 'You are now PRO! 🌟',
+                subject: `Welcome to Lumina ${planName}! 🌟`,
                 html: `
                   <div style="font-family: sans-serif; text-align: center; color: #333;">
-                    <h1 style="color: #E11D48;">Welcome to Lumina PRO!</h1>
+                    <h1 style="color: #E11D48;">Welcome to Lumina ${planName}!</h1>
                     <p>Your payment was successful and your account has been upgraded.</p>
-                    <p>You can now create unlimited albums and upload photos in 4K quality.</p>
+                    <p>You now have access to all ${planName} features.</p>
                     <br/>
                     <a href="https://luminamemories.netlify.app/app" style="background: #E11D48; color: white; padding: 12px 24px; text-decoration: none; border-radius: 99px; font-weight: bold;">Go to Dashboard</a>
                   </div>

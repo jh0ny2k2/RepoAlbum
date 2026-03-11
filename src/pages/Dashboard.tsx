@@ -79,8 +79,14 @@ export default function Dashboard() {
     enabled: !!user?.id,
   });
 
-  const isFreePlan = profile?.plan_tier !== 'pro';
-  const hasReachedLimit = isFreePlan && stats.total >= 1; // 1 Album Limit for Free
+  const plan = profile?.plan_tier || 'free';
+  const isFreePlan = plan === 'free';
+  
+  // Logic for Album Limit
+  // Free & Basic: 1 Album Limit
+  // Pro & Unlimited: Unlimited Albums
+  const albumLimit = (plan === 'free' || plan === 'basic') ? 1 : Infinity;
+  const hasReachedLimit = stats.total >= albumLimit; 
 
   if (error) {
     return (
@@ -110,18 +116,47 @@ export default function Dashboard() {
       <div className="flex flex-col md:flex-row justify-between items-end gap-12 pt-12 pb-8 border-b border-border/20">
         <div className="space-y-4">
            <div className="flex items-center gap-4">
-             <h1 className="text-6xl md:text-8xl font-black text-foreground tracking-tighter leading-none">
+             <h1 className="text-4xl sm:text-6xl md:text-8xl font-black text-foreground tracking-tighter leading-none break-words">
                {t('dashboard_title')}
              </h1>
-             {!isFreePlan ? (
-                <div className="hidden md:flex px-3 py-1 rounded-full bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 text-yellow-900 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 border border-yellow-300 animate-in fade-in zoom-in duration-500">
-                    Pro Member
-                </div>
-             ) : (
-                <div className="hidden md:flex px-3 py-1 rounded-full bg-secondary text-muted-foreground text-[10px] font-bold uppercase tracking-widest border border-border">
-                    Free Plan
-                </div>
-             )}
+             <div className="flex items-center gap-2 md:hidden mt-3">
+                {plan === 'unlimited' ? (
+                    <div className="px-3 py-1 rounded-full bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 text-yellow-900 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 border border-yellow-300">
+                        Unlimited
+                    </div>
+                ) : plan === 'pro' ? (
+                    <div className="px-3 py-1 rounded-full bg-gradient-to-r from-rose-200 via-rose-400 to-rose-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-500/20 border border-rose-300">
+                        Pro Member
+                    </div>
+                ) : plan === 'basic' ? (
+                    <div className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-widest border border-blue-200">
+                        Basic Plan
+                    </div>
+                ) : (
+                    <div className="px-3 py-1 rounded-full bg-secondary text-muted-foreground text-[10px] font-bold uppercase tracking-widest border border-border whitespace-nowrap">
+                        Free Plan
+                    </div>
+                )}
+             </div>
+             <div className="hidden md:block">
+                {plan === 'unlimited' ? (
+                    <div className="px-3 py-1 rounded-full bg-gradient-to-r from-yellow-200 via-yellow-400 to-yellow-500 text-yellow-900 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-yellow-500/20 border border-yellow-300 animate-in fade-in zoom-in duration-500">
+                        Unlimited
+                    </div>
+                ) : plan === 'pro' ? (
+                    <div className="px-3 py-1 rounded-full bg-gradient-to-r from-rose-200 via-rose-400 to-rose-500 text-white text-[10px] font-black uppercase tracking-widest shadow-lg shadow-rose-500/20 border border-rose-300 animate-in fade-in zoom-in duration-500">
+                        Pro Member
+                    </div>
+                ) : plan === 'basic' ? (
+                    <div className="px-3 py-1 rounded-full bg-blue-100 text-blue-700 text-[10px] font-bold uppercase tracking-widest border border-blue-200">
+                        Basic Plan
+                    </div>
+                ) : (
+                    <div className="px-3 py-1 rounded-full bg-secondary text-muted-foreground text-[10px] font-bold uppercase tracking-widest border border-border">
+                        Free Plan
+                    </div>
+                )}
+             </div>
            </div>
            <p className="text-muted-foreground text-xl font-light tracking-wide">
              {t('dashboard_subtitle')}
@@ -138,7 +173,9 @@ export default function Dashboard() {
                         <Sparkles className="w-5 h-5 mr-2" />
                         Upgrade to Create More
                     </Link>
-                    <p className="text-xs text-muted-foreground">Free plan limit reached (1/1 Album)</p>
+                    <p className="text-xs text-muted-foreground">
+                        {plan === 'basic' ? "Basic plan limit reached (1/1 Album)" : "Free plan limit reached (1/1 Album)"}
+                    </p>
                 </div>
             ) : (
                 <Link
